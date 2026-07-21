@@ -1,0 +1,177 @@
+.evolvex-how {
+  position: relative;
+  width: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+}
+
+.evolvex-how__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.evolvex-how__inner {
+  position: relative;
+  z-index: 5;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: clamp(3rem, 7vh, 5rem) clamp(1.25rem, 5vw, 4rem);
+}
+
+.evolvex-how__title {
+  margin: 0 0 clamp(1.5rem, 4vh, 3rem);
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(1.6rem, 3.4vw, 2.6rem);
+  letter-spacing: 0.06em;
+}
+
+.evolvex-how__title-mark {
+  display: inline-block;
+  padding: 0.1em 0.45em;
+  background: var(--evolvex-yellow, #e6ff00);
+  color: #000;
+  transform: rotate(-1.2deg);
+  box-shadow: 4px 5px 0 rgba(230, 255, 0, 0.25);
+}
+
+.evolvex-how__grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  align-items: center;
+}
+
+.evolvex-how__steps {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.6rem, 1.4vh, 1rem);
+}
+
+.evolvex-how__step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  text-align: left;
+  background: rgba(240, 240, 235, 0.04);
+  border: 1.5px solid rgba(240, 240, 235, 0.18);
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    border-color 0.25s ease,
+    background 0.25s ease,
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.evolvex-how__step:hover {
+  border-color: rgba(230, 255, 0, 0.55);
+  transform: translateX(4px);
+}
+
+.evolvex-how__step.is-active {
+  background: rgba(230, 255, 0, 0.08);
+  border-color: var(--evolvex-yellow, #e6ff00);
+  box-shadow: 5px 6px 0 rgba(230, 255, 0, 0.16);
+  transform: translateX(6px) rotate(-0.4deg);
+}
+
+.evolvex-how__step-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 1.5px solid rgba(240, 240, 235, 0.4);
+  border-radius: 8px;
+  color: var(--evolvex-yellow, #e6ff00);
+  font-size: 1rem;
+  transition: transform 0.25s ease, border-color 0.25s ease;
+}
+
+.evolvex-how__step.is-active .evolvex-how__step-icon {
+  border-color: var(--evolvex-yellow, #e6ff00);
+  transform: rotate(-6deg) scale(1.08);
+}
+
+.evolvex-how__step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.evolvex-how__step-title {
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(0.85rem, 1.15vw, 1rem);
+  letter-spacing: 0.12em;
+  color: #f0f0eb;
+}
+
+.evolvex-how__step.is-active .evolvex-how__step-title {
+  color: var(--evolvex-yellow, #e6ff00);
+}
+
+.evolvex-how__step-desc {
+  font-size: clamp(0.72rem, 0.95vw, 0.85rem);
+  line-height: 1.45;
+  color: rgba(240, 240, 235, 0.6);
+}
+
+.evolvex-how__step-num {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.75rem;
+  color: rgba(240, 240, 235, 0.35);
+}
+
+.evolvex-how__panel-reveal {
+  min-width: 0;
+}
+
+.evolvex-how__panel {
+  position: relative;
+  transform: rotate(0.6deg);
+  transition: transform 0.4s ease;
+  animation: evolvex-how-float 6s ease-in-out infinite;
+}
+
+.evolvex-how__panel:hover {
+  transform: rotate(0deg) scale(1.015);
+  animation-play-state: paused;
+}
+
+.evolvex-how__dashboard {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.65));
+}
+
+@keyframes evolvex-how-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -10px;
+  }
+}
+
+@media (max-width: 900px) {
+  .evolvex-how__grid {
+    grid-template-columns: 1fr;
+  }
+}

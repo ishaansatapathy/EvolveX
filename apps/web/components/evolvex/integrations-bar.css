@@ -1,0 +1,237 @@
+.evolvex-integrations {
+  --evolvex-yellow: #e6ff00;
+  --evolvex-paper: #f0f0eb;
+  position: relative;
+  width: 100%;
+  min-height: 100dvh;
+  /* pull up over the hero's white ripped bottom and down over the
+     how-it-works top: the PNG's own white torn edges merge with the
+     neighbours instead of stacking like two separate pages */
+  margin: -14vh 0 -8vh;
+  padding: 0;
+  background: transparent;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.evolvex-integrations__bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  /* taller than the section: the PNG's bottom white tear is pushed below
+     the clip edge so it never shows as a stray speckle band */
+  height: 116%;
+  object-fit: fill;
+  z-index: 0;
+  pointer-events: none;
+  /* fade in at the top (its own white strip disappears — the hero's white
+     shows through instead, so no double tear line) and feather the black
+     texture into the concrete of the next section at the bottom */
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 24%, #000 72%, transparent 86%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 24%, #000 72%, transparent 86%);
+}
+
+.evolvex-integrations__inner {
+  position: relative;
+  z-index: 2;
+  width: min(94vw, 1060px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.7rem, 1.6vh, 1.2rem);
+  padding: clamp(6rem, 15vh, 9rem) 0 clamp(6rem, 14vh, 8.5rem);
+  text-align: center;
+  pointer-events: auto;
+}
+
+/* ── badge ─────────────────────────────────────────── */
+.evolvex-integrations__badge {
+  margin: 0;
+  padding: 0.4em 1.1em;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(0.58rem, 0.8vw, 0.75rem);
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  color: #111;
+  background: var(--evolvex-yellow);
+  transform: rotate(-1deg);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* ── headline ──────────────────────────────────────── */
+.evolvex-integrations__headline {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05em;
+  font-family: var(--font-evolvex-hero), var(--font-evolvex-typewriter), sans-serif;
+  font-size: clamp(1.7rem, 4.2vw, 3.3rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: 0.02em;
+}
+
+.evolvex-integrations__headline-white {
+  color: var(--evolvex-paper);
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.8);
+}
+
+.evolvex-integrations__headline-yellow {
+  color: var(--evolvex-yellow);
+  transform: rotate(-0.5deg);
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.8);
+}
+
+/* ── subtitle ──────────────────────────────────────── */
+.evolvex-integrations__sub {
+  margin: 0;
+  font-size: clamp(0.72rem, 1vw, 0.95rem);
+  line-height: 1.6;
+  color: rgba(240, 240, 235, 0.78);
+}
+
+.evolvex-integrations__sub em {
+  font-style: normal;
+  color: var(--evolvex-yellow);
+  font-weight: 700;
+}
+
+/* ── card rows ─────────────────────────────────────── */
+.evolvex-integrations__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(0.5rem, 1vw, 0.9rem);
+  margin-top: clamp(0.6rem, 1.6vh, 1.2rem);
+}
+
+.evolvex-integrations__card {
+  display: flex;
+  align-items: center;
+  gap: 0.65em;
+  padding: 0.65em 1em;
+  min-width: 150px;
+  text-align: left;
+  background: rgba(14, 14, 14, 0.92);
+  border: 1.5px solid rgba(240, 240, 235, 0.18);
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.6);
+  transition:
+    transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 0.2s ease;
+}
+
+.evolvex-integrations__card:hover {
+  transform: translateY(-4px) rotate(-0.6deg);
+  border-color: var(--evolvex-yellow);
+}
+
+.evolvex-integrations__card--outcome {
+  max-width: 230px;
+  align-items: flex-start;
+}
+
+.evolvex-integrations__card-icon {
+  display: grid;
+  place-items: center;
+  width: 2em;
+  height: 2em;
+  flex-shrink: 0;
+  font-size: clamp(0.85rem, 1.15vw, 1.1rem);
+  color: var(--evolvex-paper);
+  background: rgba(240, 240, 235, 0.08);
+  border: 1px solid rgba(240, 240, 235, 0.2);
+  border-radius: 50%;
+}
+
+.evolvex-integrations__card-icon.is-yellow {
+  color: var(--evolvex-yellow);
+  border-color: rgba(230, 255, 0, 0.4);
+  background: rgba(230, 255, 0, 0.07);
+}
+
+.evolvex-integrations__card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12em;
+}
+
+.evolvex-integrations__card-name {
+  font-size: clamp(0.68rem, 0.9vw, 0.86rem);
+  font-weight: 700;
+  color: var(--evolvex-paper);
+}
+
+.evolvex-integrations__card-sub {
+  font-size: clamp(0.55rem, 0.72vw, 0.7rem);
+  line-height: 1.35;
+  color: rgba(240, 240, 235, 0.55);
+}
+
+/* ── funnel: arrows + EVOLVEX brand ────────────────── */
+.evolvex-integrations__funnel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  width: 100%;
+}
+
+.evolvex-integrations__arrows {
+  width: min(88%, 820px);
+  height: clamp(38px, 6.5vh, 64px);
+}
+
+.evolvex-integrations__arrows.is-flip {
+  transform: scaleY(-1);
+}
+
+.evolvex-integrations__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.evolvex-integrations__brand-word {
+  font-family: var(--font-evolvex-hero), var(--font-evolvex-typewriter), sans-serif;
+  font-size: clamp(2rem, 4.6vw, 3.6rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--evolvex-paper);
+  text-shadow: 0 5px 22px rgba(0, 0, 0, 0.85);
+}
+
+.evolvex-integrations__brand-word span {
+  color: var(--evolvex-yellow);
+}
+
+.evolvex-integrations__brand-badge {
+  padding: 0.35em 1em;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(0.55rem, 0.72vw, 0.72rem);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  color: #111;
+  background: var(--evolvex-yellow);
+  transform: rotate(0.8deg);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* ── mobile ────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .evolvex-integrations__arrows {
+    display: none;
+  }
+
+  .evolvex-integrations__card--outcome {
+    max-width: none;
+    width: min(88vw, 320px);
+  }
+}

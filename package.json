@@ -1,0 +1,28 @@
+{
+  "name": "evolvex",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "dotenv -- pnpm --parallel --filter web --filter @repo/api dev",
+    "db:generate": "dotenv -- turbo db:generate",
+    "db:migrate": "dotenv -- turbo db:migrate",
+    "db:check": "dotenv -- turbo db:check --filter=@repo/database",
+    "db:seed": "dotenv -- turbo db:seed",
+    "db:up": "docker compose up -d postgresdb",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "check-types": "turbo run check-types",
+    "signoz:seed": "dotenv -- pnpm exec tsx scripts/signoz-seed-demo.ts"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0",
+    "prettier": "^3.7.4",
+    "tsx": "^4.21.0",
+    "turbo": "^2.7.2",
+    "typescript": "5.9.2"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,278 @@
+.evx-auth {
+  --evx-yellow: #e6ff00;
+  --evx-paper: #f0f0eb;
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2rem;
+  padding: 2rem 1rem;
+  background: #000;
+  overflow: hidden;
+}
+
+.evx-auth__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.evx-auth__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: radial-gradient(ellipse at 50% 42%, rgba(0, 0, 0, 0.25) 0%, rgba(0, 0, 0, 0.82) 75%);
+  pointer-events: none;
+}
+
+.evx-auth__brand {
+  position: relative;
+  z-index: 2;
+  font-family: var(--font-evolvex-hero), var(--font-evolvex-typewriter), monospace;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.evx-auth__brand-evolve {
+  color: var(--evx-paper);
+}
+
+.evx-auth__brand-x {
+  color: var(--evx-yellow);
+}
+
+.evx-auth__card {
+  position: relative;
+  z-index: 2;
+  width: min(94vw, 400px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: clamp(1.4rem, 3vw, 2rem);
+  background: var(--evx-paper);
+  color: #111;
+  border-radius: 4px;
+  transform: rotate(-0.6deg);
+  box-shadow: 8px 10px 0 rgba(230, 255, 0, 0.18), 0 24px 60px rgba(0, 0, 0, 0.7);
+}
+
+.evx-auth__tape {
+  position: absolute;
+  width: 76px;
+  height: 20px;
+  background: rgba(180, 180, 170, 0.85);
+  z-index: 3;
+}
+
+.evx-auth__tape--left {
+  top: -10px;
+  left: 12%;
+  transform: rotate(-8deg);
+}
+
+.evx-auth__tape--right {
+  top: -10px;
+  right: 12%;
+  transform: rotate(7deg);
+}
+
+.evx-auth__kicker {
+  margin: 0;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.3em;
+  color: rgba(17, 17, 17, 0.55);
+}
+
+.evx-auth__title {
+  margin: 0;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(1.15rem, 2.4vw, 1.45rem);
+  line-height: 1.2;
+  color: #111;
+}
+
+.evx-auth__sub {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: rgba(17, 17, 17, 0.6);
+}
+
+.evx-auth__google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  padding: 0.7em 1em;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #111;
+  background: #fff;
+  border: 2px solid #111;
+  border-radius: 4px;
+  box-shadow: 3px 4px 0 rgba(17, 17, 17, 0.85);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.evx-auth__google:hover {
+  transform: translateY(-2px);
+  box-shadow: 4px 6px 0 rgba(17, 17, 17, 0.85);
+}
+
+.evx-auth__google:active {
+  transform: translateY(1px);
+  box-shadow: 2px 2px 0 rgba(17, 17, 17, 0.85);
+}
+
+.evx-auth__google:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.evx-auth__divider {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(17, 17, 17, 0.4);
+}
+
+.evx-auth__divider::before,
+.evx-auth__divider::after {
+  content: "";
+  flex: 1;
+  height: 1.5px;
+  background: rgba(17, 17, 17, 0.18);
+}
+
+.evx-auth__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.evx-auth__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.evx-auth__field span {
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(17, 17, 17, 0.6);
+}
+
+.evx-auth__field input {
+  padding: 0.65em 0.85em;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.82rem;
+  color: #111;
+  background: #fff;
+  border: 2px solid rgba(17, 17, 17, 0.75);
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.evx-auth__field input:focus {
+  border-color: #111;
+  box-shadow: 3px 3px 0 rgba(230, 255, 0, 0.9);
+}
+
+.evx-auth__field input::placeholder {
+  color: rgba(17, 17, 17, 0.3);
+}
+
+.evx-auth__error {
+  margin: 0;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.68rem;
+  color: #c0392b;
+}
+
+.evx-auth__success {
+  margin: 0;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.68rem;
+  color: #6b7c00;
+}
+
+.evx-auth__submit {
+  padding: 0.75em 1em;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #111;
+  background: var(--evx-yellow);
+  border: 2px solid #111;
+  border-radius: 4px;
+  box-shadow: 4px 5px 0 rgba(17, 17, 17, 0.9);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.evx-auth__submit:hover {
+  transform: translateY(-2px);
+  box-shadow: 5px 7px 0 rgba(17, 17, 17, 0.9);
+  filter: brightness(1.05);
+}
+
+.evx-auth__submit:active {
+  transform: translateY(1px);
+  box-shadow: 2px 2px 0 rgba(17, 17, 17, 0.9);
+}
+
+.evx-auth__submit:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.evx-auth__switch {
+  margin: 0;
+  text-align: center;
+  font-size: 0.72rem;
+  color: rgba(17, 17, 17, 0.6);
+}
+
+.evx-auth__switch button {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  color: #111;
+  text-decoration: underline;
+  text-decoration-color: var(--evx-yellow);
+  text-decoration-thickness: 2.5px;
+  cursor: pointer;
+}
+
+.evx-auth__footnote {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(240, 240, 235, 0.4);
+}

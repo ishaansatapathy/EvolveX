@@ -1,0 +1,8 @@
+{
+  "extends": "../typescript-config/node.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["models", "schema.ts", "index.ts", "env.ts", "migrate.ts", "drizzle.config.ts", "scripts"]
+}

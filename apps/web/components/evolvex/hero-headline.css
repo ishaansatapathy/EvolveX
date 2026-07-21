@@ -1,0 +1,117 @@
+.evolvex-hero-headline {
+  position: relative;
+  z-index: 20;
+  width: min(48vw, 640px);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.7rem, 1.6vh, 1.2rem);
+}
+
+.evolvex-hero-headline__badge {
+  margin: 0;
+  width: fit-content;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(0.6rem, 0.85vw, 0.8rem);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #111;
+  padding-bottom: 0.15em;
+  box-shadow: inset 0 -0.45em 0 var(--evolvex-yellow, #e6ff00);
+}
+
+.evolvex-hero-headline__image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.evolvex-hero-headline__sub {
+  margin: 0;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(0.7rem, 1vw, 0.95rem);
+  line-height: 1.7;
+  color: rgba(17, 17, 17, 0.85);
+}
+
+.evolvex-hero-headline__ctas {
+  display: flex;
+  align-items: center;
+  gap: clamp(1rem, 2vw, 1.8rem);
+  margin-top: 0.2rem;
+}
+
+.evolvex-hero-headline__primary {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.7em 1.6em;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(0.7rem, 0.95vw, 0.92rem);
+  font-weight: 700;
+  color: #111;
+  text-decoration: none;
+  background: url("/images/yellow-brush.png") center / 100% 100% no-repeat;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.evolvex-hero-headline__primary:hover {
+  transform: rotate(-1.5deg) scale(1.06);
+}
+
+.evolvex-hero-headline__secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(0.7rem, 0.95vw, 0.92rem);
+  font-weight: 700;
+  color: #111;
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+  transition: transform 0.2s ease;
+}
+
+.evolvex-hero-headline__secondary:hover {
+  transform: translateX(3px);
+}
+
+.evolvex-hero-headline__play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7em;
+  height: 1.7em;
+  font-size: 0.65em;
+  border: 1.5px solid #111;
+  border-radius: 9999px;
+  padding-left: 0.15em;
+}
+
+.evolvex-hero-headline__features {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: clamp(0.4rem, 1.4vh, 1rem);
+  border-top: 1.5px solid rgba(17, 17, 17, 0.6);
+  padding-top: clamp(0.5rem, 1.2vh, 0.9rem);
+}
+
+.evolvex-hero-headline__feature {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0 clamp(0.6rem, 1.1vw, 1.1rem);
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(0.55rem, 0.75vw, 0.75rem);
+  font-weight: 700;
+  color: #111;
+  white-space: nowrap;
+}
+
+.evolvex-hero-headline__feature + .evolvex-hero-headline__feature {
+  border-left: 1.5px solid rgba(17, 17, 17, 0.5);
+}
+
+.evolvex-hero-headline__feature span {
+  color: #111;
+}

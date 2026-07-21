@@ -1,0 +1,40 @@
+.evolvex-navbar {
+  position: relative;
+  width: 100%;
+  background: transparent;
+}
+
+.evolvex-navbar__logo-evolve {
+  color: #f0f0eb;
+}
+
+.evolvex-navbar__logo-x {
+  color: var(--evolvex-yellow, #e6ff00);
+  font-family: var(--font-geist-mono, ui-monospace, monospace);
+  letter-spacing: -0.06em;
+}
+
+.evolvex-navbar__link {
+  color: rgba(240, 240, 235, 0.65);
+  transition: color 0.2s ease;
+}
+
+.evolvex-navbar__link:hover {
+  color: #f0f0eb;
+}
+
+.evolvex-navbar__get-started {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(240, 240, 235, 0.35);
+  background: #000;
+  color: var(--evolvex-yellow, #e6ff00);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.evolvex-navbar__get-started:hover {
+  background: #1a1a1a;
+  transform: scale(1.04);
+}

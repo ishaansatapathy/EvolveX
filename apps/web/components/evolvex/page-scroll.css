@@ -1,0 +1,7 @@
+.evolvex-page-scroll {
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  background-color: #000;
+}

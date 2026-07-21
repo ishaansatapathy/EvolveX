@@ -1,0 +1,157 @@
+.evolvex-teams {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: #000;
+  margin-bottom: -10vh;
+  z-index: 10;
+}
+
+.evolvex-teams__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  z-index: 0;
+  pointer-events: none;
+  /* fade out the bottom torn edge so no black strip shows before next section */
+  mask-image: linear-gradient(to bottom, #000 0%, #000 86%, transparent 96%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 86%, transparent 96%);
+}
+
+.evolvex-teams__stats {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  top: 14.5%;
+  height: 31%;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1%;
+}
+
+.evolvex-teams__stat-reveal {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.evolvex-teams__stat {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.evolvex-teams__stat:hover {
+  transform: rotate(-1.6deg) scale(1.06);
+}
+
+.evolvex-teams__cta {
+  position: absolute;
+  left: 55%;
+  top: 79%;
+  transform: translate(-50%, -50%);
+  width: auto;
+  min-height: clamp(2.4rem, 4.5vh, 3.4rem);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.7rem 2.4rem;
+  text-decoration: none;
+  background: url("/images/yellow-brush.png") center / 100% 100% no-repeat;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease;
+}
+
+.evolvex-teams__cta-label {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-geist-sans, system-ui, sans-serif);
+  font-size: clamp(0.72rem, 1.05vw, 1.05rem);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #111;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.evolvex-teams__cta:hover {
+  transform: translate(-50%, -50%) rotate(-1.5deg) scale(1.05);
+  filter: drop-shadow(0 6px 18px rgba(230, 255, 0, 0.35));
+}
+
+.evolvex-teams__cta:active {
+  transform: translate(-50%, -50%) rotate(-1.5deg) scale(0.98);
+}
+
+/* hide wrong "EVO LEX" baked into spray can — flat black, no crown overlay */
+.evolvex-teams__can-cover {
+  position: absolute;
+  left: 73.6%;
+  top: 74%;
+  z-index: 4;
+  width: clamp(36px, 4.3vw, 50px);
+  height: clamp(36px, 4.3vw, 50px);
+  background: #080808;
+  border-radius: 50%;
+  transform: rotate(-10deg);
+  pointer-events: none;
+}
+
+.evolvex-teams__product-card {
+  position: absolute;
+  left: 3%;
+  top: 54%;
+  width: 26%;
+  height: 36%;
+  z-index: 5;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: clamp(0.9rem, 1.6vw, 1.5rem);
+  background: #f0f0eb;
+  color: #111;
+  transform: rotate(-1deg);
+  box-shadow: 8px 10px 0 rgba(0, 0, 0, 0.9), 0 14px 30px rgba(0, 0, 0, 0.6);
+}
+
+.evolvex-teams__product-quote {
+  font-size: clamp(1.6rem, 2.6vw, 2.6rem);
+  line-height: 0.6;
+  color: #c8b400;
+  font-family: Georgia, serif;
+}
+
+.evolvex-teams__product-card blockquote {
+  margin: 0;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(0.62rem, 0.95vw, 0.95rem);
+  line-height: 1.55;
+}
+
+.evolvex-teams__product-card figcaption {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.evolvex-teams__product-card figcaption strong {
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: clamp(0.62rem, 0.9vw, 0.9rem);
+  color: #a89700;
+}
+
+.evolvex-teams__product-card figcaption span {
+  font-size: clamp(0.55rem, 0.75vw, 0.75rem);
+  color: rgba(17, 17, 17, 0.65);
+}

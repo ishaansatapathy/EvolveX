@@ -1,0 +1,23 @@
+{
+  "extends": "../../packages/typescript-config/node.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    "moduleResolution": "Node",
+    "module": "CommonJS",
+    "paths": {
+      "corsair/oauth": ["./node_modules/corsair/dist/oauth.d.ts"],
+      "corsair/setup": ["./node_modules/corsair/dist/setup.d.ts"]
+    },
+
+    // We don't need these for our final build
+    "declarationMap": false,
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["src"],
+  "ts-node": {
+    "swc": true
+  }
+}

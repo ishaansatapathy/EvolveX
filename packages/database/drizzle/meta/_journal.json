@@ -1,0 +1,244 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1767592965691,
+      "tag": "0000_dusty_morg",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1767592965692,
+      "tag": "0001_auth_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1767592965693,
+      "tag": "0002_forms_submissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1767592965694,
+      "tag": "0003_normalized_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1767592965695,
+      "tag": "0004_views_and_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1767592965696,
+      "tag": "0005_drop_legacy_fields_jsonb",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1767592965697,
+      "tag": "0006_verification_token_expire",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1767592965698,
+      "tag": "0007_display_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1767592965699,
+      "tag": "0008_form_theme",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1767592965700,
+      "tag": "0009_indexes_and_unique_responses",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1767592965701,
+      "tag": "0010_form_expires_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1767592965702,
+      "tag": "0011_allow_multiple_submissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1767592965703,
+      "tag": "0012_require_authentication",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1767592965704,
+      "tag": "0013_versions_soft_delete_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1767592965705,
+      "tag": "0014_user_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1767592965706,
+      "tag": "0015_respondent_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1767592965707,
+      "tag": "0016_security_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1767592965708,
+      "tag": "0017_preserve_submission_responses",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1767592965709,
+      "tag": "0018_submission_audit_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1767592965710,
+      "tag": "0019_hash_auth_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1767592965711,
+      "tag": "0020_thread_queue_and_corsair",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1767592965712,
+      "tag": "0021_thread_mail_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1767592965713,
+      "tag": "0022_drop_legacy_forms",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1767592965714,
+      "tag": "0023_calendar_delete_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1767592965715,
+      "tag": "0024_thread_contacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1767592965716,
+      "tag": "0025_user_approval_prefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1767592965717,
+      "tag": "0026_agent_chat_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1767592965718,
+      "tag": "0027_schema_relations_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1767592965719,
+      "tag": "0028_gmail_history_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1767592965720,
+      "tag": "0029_calendar_channel_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1767592965721,
+      "tag": "0030_queue_processing_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781666339995,
+      "tag": "0031_milky_calypso",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1781666340000,
+      "tag": "0032_agent_chat_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1781666341000,
+      "tag": "0035_investigations",
+      "breakpoints": true
+    }
+  ]
+}
