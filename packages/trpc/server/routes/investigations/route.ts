@@ -3,7 +3,8 @@ import {
   investigationListItemSchema,
   timelineEntrySchema,
 } from "@repo/services/investigation/types";
-import { getSignozConfig, getSignozWebhookPublicUrl, isSignozConfigured } from "@repo/services/signoz-env";
+import { getSignozConfig, getSignozWebhookPublicUrl, isProductionEnvironment, isSignozConfigured, getDefaultServiceName } from "@repo/services/signoz-env";
+import { isDemoTracesEnabled } from "@repo/services/signoz/demo-traces";
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -23,6 +24,10 @@ export const investigationsRouter = router({
         webhookAuthConfigured: z.boolean(),
         webhookUrl: z.string(),
         cloudUrl: z.string().nullable(),
+        productionMode: z.boolean(),
+        demoTracesEnabled: z.boolean(),
+        defaultServiceName: z.string(),
+        ingestionConfigured: z.boolean(),
       }),
     )
     .query(async () => {
@@ -33,6 +38,10 @@ export const investigationsRouter = router({
         webhookAuthConfigured: Boolean(config?.webhookSecret),
         webhookUrl: getSignozWebhookPublicUrl(baseUrl),
         cloudUrl: config?.cloudUrl ?? null,
+        productionMode: isProductionEnvironment(),
+        demoTracesEnabled: isDemoTracesEnabled(),
+        defaultServiceName: getDefaultServiceName(),
+        ingestionConfigured: Boolean(process.env.SIGNOZ_INGESTION_KEY?.trim()),
       };
     }),
 

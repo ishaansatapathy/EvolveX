@@ -25,3 +25,11 @@ export function getSignozWebhookPublicUrl(baseUrl: string) {
   if (override) return override.replace(/\/+$/, "");
   return `${baseUrl.replace(/\/+$/, "")}/webhooks/signoz`;
 }
+
+export function getDefaultServiceName() {
+  return process.env.SIGNOZ_DEFAULT_SERVICE_NAME?.trim() || "payments-svc";
+}
+
+export function isProductionEnvironment() {
+  return process.env.NODE_ENV === "production";
+}

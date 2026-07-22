@@ -12,7 +12,9 @@
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
-    "signoz:seed": "dotenv -- pnpm exec tsx scripts/signoz-seed-demo.ts"
+    "signoz:seed": "dotenv -- pnpm exec tsx scripts/signoz-seed-demo.ts",
+    "signoz:loadgen": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts",
+    "signoz:spike": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts --spike"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0",

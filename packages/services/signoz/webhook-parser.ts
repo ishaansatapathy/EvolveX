@@ -1,18 +1,36 @@
+import { getDefaultServiceName } from "../signoz-env";
 import type { SignozAlert, SignozWebhookPayload } from "./types";
 
-export function extractServiceNames(alert: SignozAlert): string[] {
-  const labels = { ...alert.labels };
-  const candidates = [
-    labels["service.name"],
-    labels["service_name"],
-    labels["service"],
-    labels["deployment"],
-    labels["deployment_name"],
-    labels["job"],
-    labels["instance"],
-  ].filter(Boolean) as string[];
+const SERVICE_LABEL_KEYS = [
+  "service.name",
+  "service_name",
+  "service",
+  "deployment",
+  "deployment_name",
+  "job",
+  "k8s.deployment.name",
+  "k8s.pod.name",
+] as const;
 
-  return [...new Set(candidates)];
+function collectServiceCandidates(labels: Record<string, string | undefined>) {
+  return SERVICE_LABEL_KEYS.map((key) => labels[key]).filter(Boolean) as string[];
+}
+
+export function extractServiceNames(
+  alert: SignozAlert,
+  context?: Pick<SignozWebhookPayload, "commonLabels" | "groupLabels">,
+): string[] {
+  const merged = {
+    ...context?.groupLabels,
+    ...context?.commonLabels,
+    ...alert.labels,
+  };
+
+  const candidates = collectServiceCandidates(merged);
+  if (candidates.length > 0) return [...new Set(candidates)];
+
+  const defaultService = getDefaultServiceName();
+  return defaultService ? [defaultService] : [];
 }
 
 export function buildInvestigationTitle(alert: SignozAlert): string {

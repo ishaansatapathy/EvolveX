@@ -7,6 +7,22 @@ import { signozWebhookPayloadSchema } from "@repo/services/signoz/types";
 
 const investigationService = new InvestigationService();
 
+const webhookHits = new Map<string, { count: number; resetAt: number }>();
+const WEBHOOK_RATE_WINDOW_MS = 60_000;
+const WEBHOOK_RATE_MAX = Number.parseInt(process.env.SIGNOZ_WEBHOOK_RATE_LIMIT ?? "120", 10);
+
+function isRateLimited(req: Request) {
+  const key = req.ip ?? "unknown";
+  const now = Date.now();
+  const entry = webhookHits.get(key);
+  if (!entry || now >= entry.resetAt) {
+    webhookHits.set(key, { count: 1, resetAt: now + WEBHOOK_RATE_WINDOW_MS });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > WEBHOOK_RATE_MAX;
+}
+
 export const signozWebhookRouter = express.Router();
 
 signozWebhookRouter.get("/", (_req, res) => {
@@ -48,6 +64,10 @@ function verifyWebhookAuth(req: Request, res: Response): boolean {
 }
 
 signozWebhookRouter.post("/", async (req, res) => {
+  if (isRateLimited(req)) {
+    return res.status(429).json({ error: "Webhook rate limit exceeded" });
+  }
+
   if (!verifyWebhookAuth(req, res)) return;
 
   const parsed = signozWebhookPayloadSchema.safeParse(req.body);

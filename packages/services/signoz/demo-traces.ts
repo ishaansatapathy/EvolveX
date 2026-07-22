@@ -1,6 +1,7 @@
 import type { SignozTraceRow } from "./types";
 
 export function isDemoTracesEnabled() {
+  if (process.env.NODE_ENV === "production") return false;
   return process.env.SIGNOZ_DEMO_TRACES === "true";
 }
 

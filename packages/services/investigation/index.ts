@@ -8,7 +8,7 @@ import {
 } from "@repo/database/schema";
 import { logger } from "@repo/logger";
 
-import { isSignozConfigured } from "../signoz-env";
+import { isSignozConfigured, getDefaultServiceName } from "../signoz-env";
 import { signozClient } from "../signoz/client";
 import { buildDemoErrorTraces, isDemoTracesEnabled } from "../signoz/demo-traces";
 import type { SignozAlert, SignozWebhookPayload } from "../signoz/types";
@@ -126,7 +126,7 @@ class InvestigationService {
       }
 
       const window = incidentWindowFromAlert(alert);
-      const affectedServices = extractServiceNames(alert);
+      const affectedServices = extractServiceNames(alert, payload);
       const title = buildInvestigationTitle(alert);
 
       const [created] = await db
@@ -177,7 +177,7 @@ class InvestigationService {
       if (!row) return;
 
       const signozConfigured = isSignozConfigured();
-      const service = row.affectedServices[0];
+      const service = row.affectedServices[0] ?? getDefaultServiceName();
       const startMs = row.incidentWindowStart?.getTime() ?? Date.now() - 15 * 60 * 1000;
       const endMs = row.incidentWindowEnd?.getTime() ?? Date.now();
 
@@ -248,7 +248,7 @@ class InvestigationService {
         },
         signozConfigured,
         notes: usedDemoFallback
-          ? ["Demo trace evidence seeded locally (set SIGNOZ_INGESTION_KEY to send real traces to SigNoz)."]
+          ? ["Demo trace evidence seeded locally (development only — use pnpm signoz:loadgen in production)."]
           : [],
       };
 

@@ -51,6 +51,16 @@ export default function SettingsPage() {
           <p className="evx-dash__stat-note">
             Webhook auth: {signozStatus.data?.webhookAuthConfigured ? "Enabled" : "Optional (SIGNOZ_WEBHOOK_SECRET)"}
           </p>
+          <p className="evx-dash__stat-note">
+            Ingestion: {signozStatus.data?.ingestionConfigured ? "Configured" : "Set SIGNOZ_INGESTION_KEY"}
+          </p>
+          <p className="evx-dash__stat-note">
+            Default service: {signozStatus.data?.defaultServiceName ?? "payments-svc"}
+          </p>
+          <p className="evx-dash__stat-note">
+            Mode: {signozStatus.data?.productionMode ? "Production" : "Development"}
+            {signozStatus.data?.demoTracesEnabled ? " · demo traces on" : ""}
+          </p>
         </article>
 
         <article className="evx-dash__settings-card">

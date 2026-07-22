@@ -7,14 +7,15 @@ async function main() {
   const ingestionKey = process.env.SIGNOZ_INGESTION_KEY?.trim();
 
   if (ingestionKey) {
-    console.log("Sending demo error traces to SigNoz Cloud...");
+    console.log("Sending production-style error traces to SigNoz Cloud...");
     const result = await sendDemoTracesToSignoz({
       ingestionKey,
       ingestionUrl: process.env.SIGNOZ_INGESTION_URL,
-      serviceName: "payments-svc",
+      serviceName: process.env.SIGNOZ_DEFAULT_SERVICE_NAME ?? "payments-svc",
       errorCount: 3,
     });
     console.log(`Ingestion OK (${result.status}) for ${result.serviceName}`);
+    console.log("For continuous spikes run: pnpm signoz:loadgen");
     console.log("Waiting 8s for SigNoz indexing...");
     await new Promise((resolve) => setTimeout(resolve, 8000));
   } else {
