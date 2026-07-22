@@ -12,6 +12,7 @@ import { env } from "./env";
 import { createTrpcRateLimitMiddleware } from "./middleware/rate-limiters";
 import { googleAuthRouter } from "./routes/google-auth";
 import { signozWebhookRouter } from "./routes/signoz-webhook";
+import { githubWebhookRouter } from "./routes/github-webhook";
 
 export const app = express();
 
@@ -89,6 +90,7 @@ app.use(
 );
 
 app.use("/webhooks/signoz", express.json({ limit: "512kb" }), signozWebhookRouter);
+app.use("/webhooks/github", express.json({ limit: "512kb" }), githubWebhookRouter);
 
 app.use(requireTrustedOrigin);
 app.use(cookieParser());

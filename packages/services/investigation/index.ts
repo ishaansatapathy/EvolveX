@@ -1,4 +1,4 @@
-import { asc, desc, eq, and } from "@repo/database";
+import { eq, asc, desc, and, or, isNull, gte } from "@repo/database";
 import { db } from "@repo/database";
 import {
   investigationTimelineEntriesTable,
@@ -27,12 +27,18 @@ import {
   signozAlertToMetricEvidence,
   tracesToEvidence,
 } from "./correlation";
+import { parseGithubDeployEvent, type GithubPushPayload } from "../github/webhook-parser";
+import { resolveInvestigationOwnerUserId } from "./owner";
 import type {
   InvestigationContext,
   InvestigationDetail,
   InvestigationListItem,
   TimelineEntryDto,
 } from "./types";
+
+function canAccessInvestigation(row: SelectInvestigation, userId: string) {
+  return !row.userId || row.userId === userId;
+}
 
 function toListItem(row: SelectInvestigation): InvestigationListItem {
   return {
@@ -75,25 +81,30 @@ function alertFromStoredPayload(row: SelectInvestigation): SignozAlert | undefin
 }
 
 class InvestigationService {
-  async list(limit = 50): Promise<InvestigationListItem[]> {
+  async list(userId: string, limit = 50): Promise<InvestigationListItem[]> {
     const rows = await db
       .select()
       .from(investigationsTable)
+      .where(or(eq(investigationsTable.userId, userId), isNull(investigationsTable.userId)))
       .orderBy(desc(investigationsTable.createdAt))
       .limit(limit);
     return rows.map(toListItem);
   }
 
-  async getById(id: string): Promise<InvestigationDetail | null> {
+  async getById(id: string, userId: string): Promise<InvestigationDetail | null> {
     const [row] = await db
       .select()
       .from(investigationsTable)
       .where(eq(investigationsTable.id, id))
       .limit(1);
-    return row ? toDetail(row) : null;
+    if (!row || !canAccessInvestigation(row, userId)) return null;
+    return toDetail(row);
   }
 
-  async getTimeline(investigationId: string): Promise<TimelineEntryDto[]> {
+  async getTimeline(investigationId: string, userId: string): Promise<TimelineEntryDto[] | null> {
+    const detail = await this.getById(investigationId, userId);
+    if (!detail) return null;
+
     const rows = await db
       .select()
       .from(investigationTimelineEntriesTable)
@@ -102,8 +113,51 @@ class InvestigationService {
     return rows.map(toTimelineEntry);
   }
 
+  async getLogsForInvestigation(investigationId: string, userId: string) {
+    const detail = await this.getById(investigationId, userId);
+    if (!detail) return null;
+
+    const startMs = detail.incidentWindowStart
+      ? new Date(detail.incidentWindowStart).getTime()
+      : Date.now() - 15 * 60 * 1000;
+    const endMs = detail.incidentWindowEnd ? new Date(detail.incidentWindowEnd).getTime() : Date.now();
+    const service = detail.affectedServices[0] ?? getDefaultServiceName();
+
+    if (!isSignozConfigured()) return { logs: [], service };
+
+    const logs = await signozClient.searchLogs({
+      serviceName: service,
+      startMs,
+      endMs,
+      limit: 50,
+    });
+
+    return { logs, service };
+  }
+
+  async getTracesForInvestigation(investigationId: string, userId: string) {
+    const detail = await this.getById(investigationId, userId);
+    if (!detail) return null;
+
+    const startMs = detail.incidentWindowStart
+      ? new Date(detail.incidentWindowStart).getTime()
+      : Date.now() - 15 * 60 * 1000;
+    const endMs = detail.incidentWindowEnd ? new Date(detail.incidentWindowEnd).getTime() : Date.now();
+    const service = detail.affectedServices[0] ?? getDefaultServiceName();
+    const isLatencyIncident = detail.context?.alertKind === "latency_percentile";
+
+    if (!isSignozConfigured()) return { traces: [], service };
+
+    const traces = isLatencyIncident
+      ? await signozClient.searchSlowTraces({ serviceName: service, startMs, endMs, limit: 50 })
+      : await signozClient.searchTracesInWindow({ serviceName: service, startMs, endMs, limit: 50 });
+
+    return { traces, service };
+  }
+
   async handleSignozWebhook(payload: SignozWebhookPayload): Promise<{ investigationIds: string[] }> {
     const investigationIds: string[] = [];
+    const ownerUserId = await resolveInvestigationOwnerUserId();
 
     for (const alert of payload.alerts) {
       const fingerprint = alert.fingerprint ?? `${alert.labels.alertname ?? "alert"}-${alert.startsAt}`;
@@ -139,6 +193,7 @@ class InvestigationService {
       const [created] = await db
         .insert(investigationsTable)
         .values({
+          userId: ownerUserId,
           externalId: fingerprint,
           title,
           status: "building",
@@ -365,6 +420,95 @@ class InvestigationService {
         })
         .where(eq(investigationsTable.id, investigationId));
     }
+  }
+
+  async handleGithubWebhook(payload: GithubPushPayload): Promise<{ attachedInvestigationIds: string[] }> {
+    const deploy = parseGithubDeployEvent(payload);
+    const ownerUserId = await resolveInvestigationOwnerUserId();
+    const since = new Date(Date.now() - 6 * 60 * 60 * 1000);
+
+    const candidates = await db
+      .select()
+      .from(investigationsTable)
+      .where(
+        and(
+          gte(investigationsTable.createdAt, since),
+          ownerUserId
+            ? or(eq(investigationsTable.userId, ownerUserId), isNull(investigationsTable.userId))
+            : undefined,
+        ),
+      )
+      .orderBy(desc(investigationsTable.createdAt));
+
+    const attachedInvestigationIds: string[] = [];
+
+    const attachDeploy = async (row: SelectInvestigation) => {
+      const timelineRows = await db
+        .select()
+        .from(investigationTimelineEntriesTable)
+        .where(eq(investigationTimelineEntriesTable.investigationId, row.id));
+
+      const maxSort = timelineRows.reduce((max, entry) => Math.max(max, entry.sortOrder ?? 0), 0);
+
+      await db.insert(investigationTimelineEntriesTable).values({
+        investigationId: row.id,
+        occurredAt: deploy.occurredAt,
+        kind: "DEPLOY",
+        title: deploy.title,
+        detail: deploy.detail,
+        sourceRef: {
+          source: "github-webhook",
+          repo: deploy.repo,
+          branch: deploy.branch,
+          sha: deploy.sha,
+          author: deploy.author,
+        },
+        sortOrder: maxSort + 1,
+      });
+
+      const context = (row.investigationContext as InvestigationContext | null) ?? {
+        summary: row.title,
+        evidence: [],
+        affectedServices: row.affectedServices ?? [],
+        incidentWindow: {
+          start: row.incidentWindowStart?.toISOString() ?? new Date().toISOString(),
+          end: row.incidentWindowEnd?.toISOString() ?? new Date().toISOString(),
+        },
+        signozConfigured: isSignozConfigured(),
+        notes: [],
+      };
+
+      context.evidence.push({
+        id: `deploy-${deploy.sha}`,
+        kind: "DEPLOY",
+        title: deploy.title,
+        detail: deploy.detail,
+        occurredAt: deploy.occurredAt.toISOString(),
+        source: "github-webhook",
+      });
+      context.notes = [...(context.notes ?? []), "Deploy event correlated from GitHub push webhook."];
+
+      await db
+        .update(investigationsTable)
+        .set({ investigationContext: context, updatedAt: new Date() })
+        .where(eq(investigationsTable.id, row.id));
+
+      attachedInvestigationIds.push(row.id);
+    };
+
+    for (const row of candidates) {
+      const anchor = row.incidentWindowStart?.getTime() ?? row.createdAt.getTime();
+      const deployMs = deploy.occurredAt.getTime();
+      if (deployMs >= anchor - 45 * 60 * 1000 && deployMs <= anchor + 20 * 60 * 1000) {
+        await attachDeploy(row);
+      }
+    }
+
+    if (attachedInvestigationIds.length === 0 && candidates[0]) {
+      await attachDeploy(candidates[0]);
+    }
+
+    return { attachedInvestigationIds };
   }
 
   async rerunAllPipelines(): Promise<number> {

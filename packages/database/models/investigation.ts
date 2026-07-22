@@ -1,5 +1,7 @@
-import { jsonb, pgTable, text, timestamp, uuid, varchar, integer, check } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, timestamp, uuid, varchar, integer, check, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+
+import { usersTable } from "./user";
 
 export const investigationStatusEnum = ["building", "ready", "failed"] as const;
 export type InvestigationStatus = (typeof investigationStatusEnum)[number];
@@ -20,6 +22,7 @@ export const investigationsTable = pgTable(
   "investigations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => usersTable.id, { onDelete: "set null" }),
     externalId: varchar("external_id", { length: 128 }),
     title: varchar("title", { length: 255 }).notNull(),
     status: varchar("status", { length: 20 }).$type<InvestigationStatus>().default("building").notNull(),
@@ -39,6 +42,7 @@ export const investigationsTable = pgTable(
       "investigations_status_check",
       sql`${t.status} in ('building', 'ready', 'failed')`,
     ),
+    userIdIdx: index("investigations_user_id_idx").on(t.userId),
   }),
 );
 

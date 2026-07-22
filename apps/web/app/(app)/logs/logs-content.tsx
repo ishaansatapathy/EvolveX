@@ -5,33 +5,59 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { AppPageHeader } from "~/components/evolvex/app-shell";
-import { LOGS, getIncidentById } from "~/lib/evolvex-demo-data";
+import { LOGS } from "~/lib/evolvex-demo-data";
+import { trpc } from "~/trpc/client";
+
+function isUuid(value: string | null) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
 
 export default function LogsPageContent() {
   const searchParams = useSearchParams();
-  const incidentId = searchParams.get("incident");
+  const investigationId = searchParams.get("investigation");
   const serviceFilter = searchParams.get("service") ?? "";
-  const incident = getIncidentById(incidentId);
+  const useLiveData = isUuid(investigationId);
 
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState<"ALL" | "ERROR" | "WARN" | "INFO">("ALL");
 
+  const liveQuery = trpc.investigations.logs.useQuery(
+    { id: investigationId ?? "" },
+    { enabled: useLiveData },
+  );
+
   const filtered = useMemo(() => {
+    if (useLiveData) {
+      return (liveQuery.data?.logs ?? [])
+        .filter((log) => {
+          const severity = (log.severityText ?? "INFO").toUpperCase();
+          if (level !== "ALL" && severity !== level) return false;
+          if (query && !(log.body ?? "").toLowerCase().includes(query.toLowerCase())) return false;
+          return true;
+        })
+        .map((log, index) => ({
+          id: `${log.timestamp}-${index}`,
+          at: log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : "—",
+          level: (log.severityText ?? "INFO").toUpperCase(),
+          service: log.serviceName ?? liveQuery.data?.service ?? serviceFilter,
+          message: log.body ?? "",
+        }));
+    }
+
     return LOGS.filter((log) => {
-      if (incidentId && log.incidentId !== incidentId) return false;
       if (serviceFilter && log.service !== serviceFilter) return false;
       if (level !== "ALL" && log.level !== level) return false;
       if (query && !log.message.toLowerCase().includes(query.toLowerCase())) return false;
       return true;
     });
-  }, [incidentId, serviceFilter, level, query]);
+  }, [useLiveData, liveQuery.data, serviceFilter, level, query]);
 
   return (
     <>
       <AppPageHeader kicker="⊙ SIGNAL STREAM" title="Logs">
-        {incident ? (
+        {investigationId ? (
           <Link href="/investigations" className="evx-dash__chip">
-            {incident.id}
+            Case linked
           </Link>
         ) : null}
       </AppPageHeader>
@@ -49,11 +75,16 @@ export default function LogsPageContent() {
           <option value="WARN">WARN</option>
           <option value="INFO">INFO</option>
         </select>
-        {serviceFilter ? <span className="evx-dash__chip">{serviceFilter}</span> : null}
+        {(serviceFilter || liveQuery.data?.service) ? (
+          <span className="evx-dash__chip">{liveQuery.data?.service ?? serviceFilter}</span>
+        ) : null}
+        {useLiveData ? <span className="evx-dash__chip">SigNoz window</span> : null}
       </div>
 
       <div className="evx-dash__table">
-        {filtered.length ? (
+        {liveQuery.isLoading ? (
+          <p className="evx-dash__empty">Loading logs from SigNoz…</p>
+        ) : filtered.length ? (
           filtered.map((log) => (
             <div key={log.id} className="evx-dash__row">
               <span className="evx-dash__row-at">{log.at}</span>
@@ -63,7 +94,9 @@ export default function LogsPageContent() {
             </div>
           ))
         ) : (
-          <p className="evx-dash__empty">No logs match your filters.</p>
+          <p className="evx-dash__empty">
+            {useLiveData ? "No logs in this investigation window from SigNoz." : "No logs match your filters."}
+          </p>
         )}
       </div>
     </>

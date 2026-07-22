@@ -1,7 +1,7 @@
 import { logger } from "@repo/logger";
 
 import { getSignozConfig, isSignozConfigured } from "../signoz-env";
-import type { SignozTraceRow } from "./types";
+import type { SignozLogRow, SignozTraceRow } from "./types";
 
 type QueryRangeResponse = {
   data?: {
@@ -37,6 +37,16 @@ function parseTraceRow(row: Record<string, unknown>): SignozTraceRow {
     durationMs,
     hasError: Boolean(rowValue(row, "hasError") ?? rowValue(row, "has_error")),
     timestamp: String(rowValue(row, "timestamp") ?? ""),
+  };
+}
+
+function parseLogRow(row: Record<string, unknown>): SignozLogRow {
+  return {
+    timestamp: String(rowValue(row, "timestamp") ?? ""),
+    body: String(rowValue(row, "body") ?? rowValue(row, "message") ?? ""),
+    severityText: String(rowValue(row, "severity_text") ?? rowValue(row, "severityText") ?? "INFO"),
+    serviceName: String(rowValue(row, "service.name") ?? rowValue(row, "service_name") ?? ""),
+    traceId: String(rowValue(row, "trace_id") ?? rowValue(row, "traceID") ?? ""),
   };
 }
 
@@ -77,6 +87,114 @@ export class SignozClient {
       orderKey: "durationNano",
       orderDirection: "desc",
     });
+  }
+
+  async searchTracesInWindow(input: {
+    serviceName?: string;
+    startMs: number;
+    endMs: number;
+    limit?: number;
+  }): Promise<SignozTraceRow[]> {
+    return this.searchTraces({
+      ...input,
+      filterParts: ["parent_span_id = ''"],
+      orderKey: "timestamp",
+    });
+  }
+
+  async searchLogs(input: {
+    serviceName?: string;
+    startMs: number;
+    endMs: number;
+    limit?: number;
+  }): Promise<SignozLogRow[]> {
+    const config = getSignozConfig();
+    if (!config) return [];
+
+    const filterParts = ["severity_text EXISTS"];
+    if (input.serviceName) {
+      filterParts.push(`service.name = '${input.serviceName.replace(/'/g, "''")}'`);
+    }
+
+    const body = {
+      start: input.startMs,
+      end: input.endMs,
+      requestType: "raw",
+      compositeQuery: {
+        queries: [
+          {
+            type: "builder_query",
+            spec: {
+              name: "A",
+              signal: "logs",
+              filter: { expression: filterParts.join(" AND ") },
+              selectFields: [
+                { name: "timestamp" },
+                { name: "body" },
+                { name: "severity_text" },
+                { name: "service.name", fieldContext: "resource" },
+                { name: "trace_id" },
+              ],
+              limit: input.limit ?? 50,
+              offset: 0,
+              order: [{ key: { name: "timestamp" }, direction: "desc" }],
+            },
+          },
+        ],
+      },
+    };
+
+    const url = `${normalizeBaseUrl(config.cloudUrl)}/api/v5/query_range`;
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "SIGNOZ-API-KEY": config.apiKey,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        logger.warn("SigNoz logs query_range failed", {
+          status: response.status,
+          body: text.slice(0, 500),
+        });
+        return [];
+      }
+
+      const json = (await response.json()) as QueryRangeResponse;
+      const rows = json.data?.result?.[0]?.table?.rows ?? [];
+      return rows.map((row) => parseLogRow(row));
+    } catch (err) {
+      logger.warn("SigNoz logs query_range error", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }
+  }
+
+  async testConnection(): Promise<{ ok: boolean; message: string }> {
+    const config = getSignozConfig();
+    if (!config) return { ok: false, message: "SigNoz API not configured" };
+
+    const url = `${normalizeBaseUrl(config.cloudUrl)}/api/v1/service_accounts/me`;
+    try {
+      const response = await fetch(url, {
+        headers: { "SIGNOZ-API-KEY": config.apiKey },
+      });
+      if (!response.ok) {
+        return { ok: false, message: `SigNoz API returned ${response.status}` };
+      }
+      return { ok: true, message: "SigNoz API connected" };
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "SigNoz connection failed",
+      };
+    }
   }
 
   private async searchTraces(input: {

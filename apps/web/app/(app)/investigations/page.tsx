@@ -166,10 +166,10 @@ export default function InvestigationsPage() {
                   <button type="button" className="evx-dash__btn-primary" onClick={scrollToTimeline}>
                     Open Timeline
                   </button>
-                  <Link href={`/logs?incident=${incident.shortId}&service=${primaryService}`} className="evx-dash__btn-ghost">
+                  <Link href={`/logs?investigation=${incident.id}&service=${primaryService}`} className="evx-dash__btn-ghost">
                     View Logs →
                   </Link>
-                  <Link href={`/traces?incident=${incident.shortId}&service=${primaryService}`} className="evx-dash__btn-ghost">
+                  <Link href={`/traces?investigation=${incident.id}&service=${primaryService}`} className="evx-dash__btn-ghost">
                     View Traces →
                   </Link>
                 </div>

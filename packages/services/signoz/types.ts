@@ -26,6 +26,14 @@ export const signozWebhookPayloadSchema = z.object({
 export type SignozWebhookPayload = z.infer<typeof signozWebhookPayloadSchema>;
 export type SignozAlert = z.infer<typeof signozAlertSchema>;
 
+export type SignozLogRow = {
+  timestamp?: string;
+  body?: string;
+  severityText?: string;
+  serviceName?: string;
+  traceId?: string;
+};
+
 export type SignozTraceRow = {
   traceId?: string;
   spanId?: string;
