@@ -1,4 +1,5 @@
 export * from "./models/investigation";
+export * from "./models/investigation-os";
 export * from "./models/user";
 export * from "./models/queue-item";
 export * from "./models/mail-cache";
@@ -10,3 +11,4 @@ export * from "./models/brief-cache";
 export * from "./models/gmail-state";
 export * from "./models/calendar-state";
 export * from "./relations";
+export * from "./relations-investigation-os";

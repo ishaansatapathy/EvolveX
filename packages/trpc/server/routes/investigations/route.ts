@@ -1,6 +1,7 @@
 import {
   investigationDetailSchema,
   investigationListItemSchema,
+  investigationOsContextSchema,
   timelineEntrySchema,
 } from "@repo/services/investigation/types";
 import {
@@ -119,6 +120,22 @@ export const investigationsRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
         }
         return timeline;
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  context: protectedProcedure
+    .meta({ openapi: { method: "GET", path: "/investigations/{id}/context", tags: TAGS } })
+    .input(z.object({ id: z.string().uuid() }))
+    .output(investigationOsContextSchema)
+    .query(async ({ ctx, input }) => {
+      try {
+        const context = await investigationService.getOsContext(input.id, ctx.user.id);
+        if (!context) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+        }
+        return context;
       } catch (error) {
         mapServiceError(error);
       }

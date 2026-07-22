@@ -1,8 +1,14 @@
 import { eq, asc, desc, and, or, isNull, gte } from "@repo/database";
 import { db } from "@repo/database";
 import {
+  changeEventsTable,
+  evidenceTable,
+  investigationSummariesTable,
   investigationTimelineEntriesTable,
   investigationsTable,
+  runtimeSignalsTable,
+  serviceDependenciesTable,
+  servicesTable,
   type SelectInvestigation,
   type SelectTimelineEntry,
 } from "@repo/database/schema";
@@ -29,10 +35,22 @@ import {
 } from "./correlation";
 import { parseGithubDeployEvent, type GithubPushPayload } from "../github/webhook-parser";
 import { resolveInvestigationOwnerUserId } from "./owner";
+import {
+  buildPersistedSummary,
+  clearDerivedInvestigationRows,
+  insertTimelineEntry,
+  persistChangeEvent,
+  persistRuntimeSignalsFromTraces,
+  seedDefaultServiceGraph,
+} from "./persistence";
 import type {
+  ChangeEventRowDto,
+  EvidenceRowDto,
   InvestigationContext,
   InvestigationDetail,
   InvestigationListItem,
+  InvestigationOsContext,
+  RuntimeSignalRowDto,
   TimelineEntryDto,
 } from "./types";
 
@@ -56,6 +74,11 @@ function toListItem(row: SelectInvestigation): InvestigationListItem {
 function toDetail(row: SelectInvestigation): InvestigationDetail {
   return {
     ...toListItem(row),
+    incidentId: row.incidentId,
+    primaryService: row.primaryService,
+    summary: row.summary,
+    startedAt: row.startedAt?.toISOString() ?? null,
+    completedAt: row.completedAt?.toISOString() ?? null,
     alertName: row.alertName,
     incidentWindowStart: row.incidentWindowStart?.toISOString() ?? null,
     incidentWindowEnd: row.incidentWindowEnd?.toISOString() ?? null,
@@ -71,7 +94,9 @@ function toTimelineEntry(row: SelectTimelineEntry): TimelineEntryDto {
     kind: row.kind,
     title: row.title,
     detail: row.detail,
+    source: row.source,
     sourceRef: (row.sourceRef as Record<string, unknown> | null) ?? null,
+    sortOrder: row.sortOrder,
   };
 }
 
@@ -155,6 +180,161 @@ class InvestigationService {
     return { traces, service };
   }
 
+  async getOsContext(investigationId: string, userId: string): Promise<InvestigationOsContext | null> {
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || !canAccessInvestigation(row, userId)) return null;
+
+    const [timeline, evidence, changeEvents, runtimeSignals, summaries] = await Promise.all([
+      db
+        .select()
+        .from(investigationTimelineEntriesTable)
+        .where(eq(investigationTimelineEntriesTable.investigationId, investigationId))
+        .orderBy(
+          asc(investigationTimelineEntriesTable.sortOrder),
+          asc(investigationTimelineEntriesTable.occurredAt),
+        ),
+      db
+        .select()
+        .from(evidenceTable)
+        .where(eq(evidenceTable.investigationId, investigationId))
+        .orderBy(asc(evidenceTable.occurredAt)),
+      db
+        .select()
+        .from(changeEventsTable)
+        .where(eq(changeEventsTable.investigationId, investigationId))
+        .orderBy(asc(changeEventsTable.occurredAt)),
+      db
+        .select()
+        .from(runtimeSignalsTable)
+        .where(eq(runtimeSignalsTable.investigationId, investigationId))
+        .orderBy(asc(runtimeSignalsTable.signalTimestamp)),
+      db
+        .select()
+        .from(investigationSummariesTable)
+        .where(eq(investigationSummariesTable.investigationId, investigationId))
+        .orderBy(desc(investigationSummariesTable.generatedAt))
+        .limit(1),
+    ]);
+
+    const primaryService = row.primaryService ?? row.affectedServices[0] ?? null;
+    const nodes: InvestigationOsContext["dependencies"]["nodes"] = [];
+    const edges: InvestigationOsContext["dependencies"]["edges"] = [];
+
+    if (primaryService) {
+      const [rootService] = await db
+        .select()
+        .from(servicesTable)
+        .where(eq(servicesTable.name, primaryService))
+        .limit(1);
+
+      if (rootService) {
+        const outgoing = await db
+          .select({
+            edgeId: serviceDependenciesTable.id,
+            edgeHealthy: serviceDependenciesTable.healthy,
+            edgeLatencyMs: serviceDependenciesTable.latencyMs,
+            destinationId: servicesTable.id,
+            destinationName: servicesTable.name,
+            destinationHealthy: servicesTable.healthy,
+            destinationLatencyMs: servicesTable.latencyMs,
+          })
+          .from(serviceDependenciesTable)
+          .innerJoin(servicesTable, eq(serviceDependenciesTable.destinationServiceId, servicesTable.id))
+          .where(eq(serviceDependenciesTable.sourceServiceId, rootService.id));
+
+        nodes.push({
+          id: rootService.id,
+          name: rootService.name,
+          healthy: rootService.healthy,
+          latencyMs: rootService.latencyMs,
+        });
+
+        for (const edge of outgoing) {
+          if (!nodes.some((node) => node.id === edge.destinationId)) {
+            nodes.push({
+              id: edge.destinationId,
+              name: edge.destinationName,
+              healthy: edge.destinationHealthy,
+              latencyMs: edge.destinationLatencyMs,
+            });
+          }
+
+          edges.push({
+            id: edge.edgeId,
+            source: rootService.name,
+            destination: edge.destinationName,
+            healthy: edge.edgeHealthy,
+            latencyMs: edge.edgeLatencyMs,
+          });
+        }
+      }
+    }
+
+    const latestSummary = summaries[0];
+
+    return {
+      investigation: {
+        id: row.id,
+        incidentId: row.incidentId,
+        status: row.status,
+        severity: row.severity,
+        primaryService: row.primaryService,
+        summary: row.summary,
+        startedAt: row.startedAt?.toISOString() ?? null,
+        completedAt: row.completedAt?.toISOString() ?? null,
+      },
+      timeline: timeline.map(toTimelineEntry),
+      evidence: evidence.map(
+        (item): EvidenceRowDto => ({
+          id: item.id,
+          type: item.type,
+          description: item.description,
+          occurredAt: item.occurredAt.toISOString(),
+          url: item.url,
+          confidence: item.confidence,
+          timelineEntryId: item.timelineEntryId,
+          metadata: item.metadata ?? {},
+        }),
+      ),
+      changeEvents: changeEvents.map(
+        (item): ChangeEventRowDto => ({
+          id: item.id,
+          type: item.type,
+          service: item.service,
+          author: item.author,
+          occurredAt: item.occurredAt.toISOString(),
+          metadata: item.metadata ?? {},
+        }),
+      ),
+      runtimeSignals: runtimeSignals.map(
+        (item): RuntimeSignalRowDto => ({
+          id: item.id,
+          traceId: item.traceId,
+          service: item.service,
+          metric: item.metric,
+          latencyMs: item.latencyMs,
+          p95Ms: item.p95Ms,
+          p99Ms: item.p99Ms,
+          errorRate: item.errorRate,
+          signalTimestamp: item.signalTimestamp.toISOString(),
+          metadata: item.metadata ?? {},
+        }),
+      ),
+      dependencies: { nodes, edges },
+      llmSummary: latestSummary
+        ? {
+            markdown: latestSummary.markdown,
+            generatedAt: latestSummary.generatedAt.toISOString(),
+          }
+        : null,
+    };
+  }
+
   async handleSignozWebhook(payload: SignozWebhookPayload): Promise<{ investigationIds: string[] }> {
     const investigationIds: string[] = [];
     const ownerUserId = await resolveInvestigationOwnerUserId();
@@ -190,6 +370,8 @@ class InvestigationService {
       const affectedServices = extractServiceNames(alert, payload);
       const title = buildInvestigationTitle(alert);
 
+      const primaryService = affectedServices[0] ?? getDefaultServiceName();
+
       const [created] = await db
         .insert(investigationsTable)
         .values({
@@ -198,6 +380,8 @@ class InvestigationService {
           title,
           status: "building",
           severity: alert.labels.severity ?? payload.commonLabels?.severity ?? null,
+          primaryService,
+          startedAt: window.start,
           alertName: alert.labels.alertname ?? null,
           affectedServices,
           incidentWindowStart: window.start,
@@ -208,7 +392,13 @@ class InvestigationService {
 
       if (!created) continue;
 
-      await db.insert(investigationTimelineEntriesTable).values({
+      const incidentId = shortInvestigationId(created.id);
+      await db
+        .update(investigationsTable)
+        .set({ incidentId })
+        .where(eq(investigationsTable.id, created.id));
+
+      await insertTimelineEntry({
         investigationId: created.id,
         occurredAt: window.start,
         kind: "ALERT",
@@ -217,6 +407,7 @@ class InvestigationService {
           alert.annotations.summary ??
           alert.annotations.info ??
           `SigNoz alert ${alert.labels.alertname ?? "unknown"} started firing.`,
+        source: "signoz-webhook",
         sourceRef: { fingerprint, labels: alert.labels, annotations: alert.annotations },
         sortOrder: 0,
       });
@@ -298,6 +489,8 @@ class InvestigationService {
           ),
         );
 
+      await clearDerivedInvestigationRows(investigationId);
+
       let sortOrder = 1;
       const traceMode = isLatencyIncident ? "slow" : "error";
       const traceEvidence = tracesToEvidence(traces, traceMode);
@@ -309,26 +502,29 @@ class InvestigationService {
           row.incidentWindowStart?.toISOString() ?? new Date().toISOString(),
         );
         if (metricEvidence) {
-          await db.insert(investigationTimelineEntriesTable).values({
+          await insertTimelineEntry({
             investigationId,
             occurredAt: new Date(metricEvidence.occurredAt),
             kind: "METRIC",
             title: metricEvidence.title,
             detail: metricEvidence.detail,
-            sourceRef: { source: "signoz-alert", percentile: classification.percentile },
+            source: "signoz-alert",
+            sourceRef: { percentile: classification.percentile },
             sortOrder: sortOrder++,
+            metadata: { percentile: classification.percentile },
           });
         }
       }
 
       for (const evidence of traceEvidence.slice(0, 10)) {
-        await db.insert(investigationTimelineEntriesTable).values({
+        await insertTimelineEntry({
           investigationId,
           occurredAt: new Date(evidence.occurredAt),
           kind: "TRACE",
           title: evidence.title,
           detail: evidence.detail,
-          sourceRef: { source: "signoz", mode: traceMode },
+          source: "signoz",
+          sourceRef: { mode: traceMode },
           sortOrder: sortOrder++,
         });
       }
@@ -385,22 +581,35 @@ class InvestigationService {
         );
 
         for (const evidence of ebpfEvidence) {
-          await db.insert(investigationTimelineEntriesTable).values({
+          await insertTimelineEntry({
             investigationId,
             occurredAt: new Date(evidence.occurredAt),
             kind: "EBPF",
             title: evidence.title,
             detail: evidence.detail,
-            sourceRef: { source: "ebpf-enricher" },
+            source: "ebpf-enricher",
             sortOrder: sortOrder++,
           });
         }
       }
 
+      await persistRuntimeSignalsFromTraces({
+        investigationId,
+        service,
+        traces,
+        classification,
+      });
+      await seedDefaultServiceGraph(service);
+
+      const summaryText = buildPersistedSummary(context);
+
       await db
         .update(investigationsTable)
         .set({
           status: "ready",
+          summary: summaryText,
+          primaryService: service,
+          completedAt: new Date(),
           investigationContext: context,
           updatedAt: new Date(),
           errorMessage: null,
@@ -450,20 +659,35 @@ class InvestigationService {
 
       const maxSort = timelineRows.reduce((max, entry) => Math.max(max, entry.sortOrder ?? 0), 0);
 
-      await db.insert(investigationTimelineEntriesTable).values({
+      await insertTimelineEntry({
         investigationId: row.id,
         occurredAt: deploy.occurredAt,
         kind: "DEPLOY",
         title: deploy.title,
         detail: deploy.detail,
+        source: "github-webhook",
         sourceRef: {
-          source: "github-webhook",
           repo: deploy.repo,
           branch: deploy.branch,
           sha: deploy.sha,
           author: deploy.author,
         },
         sortOrder: maxSort + 1,
+        metadata: { repo: deploy.repo, sha: deploy.sha, branch: deploy.branch },
+      });
+
+      await persistChangeEvent({
+        investigationId: row.id,
+        type: "commit",
+        service: row.primaryService ?? row.affectedServices[0] ?? deploy.repo,
+        author: deploy.author,
+        occurredAt: deploy.occurredAt,
+        metadata: {
+          repo: deploy.repo,
+          branch: deploy.branch,
+          sha: deploy.sha,
+          message: deploy.message,
+        },
       });
 
       const context = (row.investigationContext as InvestigationContext | null) ?? {
