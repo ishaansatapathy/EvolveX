@@ -20,14 +20,19 @@
 
 /* ── Sidebar ─────────────────────────────────────────── */
 .evx-dash__sidebar {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
   display: flex;
   flex-direction: column;
   gap: 1.6rem;
   width: 210px;
+  height: 100dvh;
   flex-shrink: 0;
   padding: 1.4rem 1rem;
   border-right: 1.5px dashed var(--evx-line);
   background: #000;
+  overflow: hidden;
 }
 
 .evx-dash__logo {
@@ -48,8 +53,11 @@
 
 .evx-dash__nav {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 0.25rem;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .evx-dash__nav-item {
@@ -92,10 +100,15 @@
 
 .evx-dash__signout {
   margin-top: auto;
+  flex-shrink: 0;
   padding: 0.5em 0.7em;
   font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
   font-size: 0.7rem;
   color: rgba(240, 240, 235, 0.45);
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
   text-decoration: none;
   transition: color 0.15s ease;
 }
