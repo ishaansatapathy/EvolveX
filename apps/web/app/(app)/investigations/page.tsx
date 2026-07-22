@@ -33,6 +33,15 @@ function mapSeverity(value: string | null | undefined) {
   return "medium";
 }
 
+function formatChangeEvent(type: string, metadata: Record<string, unknown>) {
+  if (type === "commit" || type === "deployment") {
+    const sha = typeof metadata.sha === "string" ? metadata.sha : null;
+    const repo = typeof metadata.repo === "string" ? metadata.repo : null;
+    if (repo && sha) return `${repo}@${sha}`;
+  }
+  return type;
+}
+
 export default function InvestigationsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -44,16 +53,20 @@ export default function InvestigationsPage() {
 
   const investigations = listQuery.data ?? [];
   const activeId = selectedId ?? investigations[0]?.id ?? null;
+  const activeListItem = investigations.find((item) => item.id === activeId);
 
-  const detailQuery = trpc.investigations.get.useQuery(
+  const contextQuery = trpc.investigations.context.useQuery(
     { id: activeId ?? "" },
-    { enabled: Boolean(activeId), refetchInterval: (query) => (query.state.data?.status === "building" ? 3000 : false) },
+    {
+      enabled: Boolean(activeId),
+      refetchInterval: (query) => (query.state.data?.investigation.status === "building" ? 3000 : false),
+    },
   );
 
-  const timelineQuery = trpc.investigations.timeline.useQuery(
-    { id: activeId ?? "" },
-    { enabled: Boolean(activeId), refetchInterval: detailQuery.data?.status === "building" ? 3000 : false },
-  );
+  const osContext = contextQuery.data;
+  const timeline = osContext?.timeline ?? [];
+  const primaryService =
+    osContext?.investigation.primaryService ?? activeListItem?.affectedServices[0] ?? "unknown";
 
   const stats = useMemo(() => {
     const open = investigations.length;
@@ -66,9 +79,11 @@ export default function InvestigationsPage() {
     ];
   }, [investigations]);
 
-  const incident = detailQuery.data;
-  const timeline = timelineQuery.data ?? [];
-  const primaryService = incident?.affectedServices[0] ?? "unknown";
+  const summaryText =
+    osContext?.investigation.summary ??
+    (osContext?.investigation.status === "building"
+      ? "Collecting evidence from SigNoz…"
+      : "No context generated yet.");
 
   function scrollToTimeline() {
     timelineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -148,35 +163,35 @@ export default function InvestigationsPage() {
         </div>
 
         <div className="evx-dash__detail">
-          {incident ? (
+          {contextQuery.isLoading && !osContext ? (
+            <p className="evx-dash__stat-note">Loading case context from Postgres…</p>
+          ) : osContext && activeListItem ? (
             <>
               <p className="evx-dash__panel-label">
-                CASE FILE — <span>{incident.shortId}</span>
+                CASE FILE — <span>{activeListItem.shortId}</span>
+                {osContext.investigation.incidentId ? (
+                  <span style={{ marginLeft: "0.5rem", opacity: 0.6 }}>· {osContext.investigation.incidentId}</span>
+                ) : null}
               </p>
 
               <div className="evx-dash__cause">
                 <p className="evx-dash__cause-kicker">✦ INVESTIGATION CONTEXT</p>
-                <p className="evx-dash__cause-text">
-                  {incident.context?.summary ??
-                    (incident.status === "building"
-                      ? "Collecting evidence from SigNoz…"
-                      : incident.errorMessage ?? "No context generated yet.")}
-                </p>
+                <p className="evx-dash__cause-text">{summaryText}</p>
                 <div className="evx-dash__cause-actions">
                   <button type="button" className="evx-dash__btn-primary" onClick={scrollToTimeline}>
                     Open Timeline
                   </button>
-                  <Link href={`/logs?investigation=${incident.id}&service=${primaryService}`} className="evx-dash__btn-ghost">
+                  <Link href={`/logs?investigation=${activeListItem.id}&service=${primaryService}`} className="evx-dash__btn-ghost">
                     View Logs →
                   </Link>
-                  <Link href={`/traces?investigation=${incident.id}&service=${primaryService}`} className="evx-dash__btn-ghost">
+                  <Link href={`/traces?investigation=${activeListItem.id}&service=${primaryService}`} className="evx-dash__btn-ghost">
                     View Traces →
                   </Link>
                 </div>
               </div>
 
               <div className="evx-dash__timeline" ref={timelineRef}>
-                <p className="evx-dash__timeline-label">EVIDENCE TIMELINE</p>
+                <p className="evx-dash__timeline-label">EVIDENCE TIMELINE · POSTGRES</p>
                 {timeline.length === 0 ? (
                   <p className="evx-dash__stat-note">Timeline entries will appear as evidence is collected.</p>
                 ) : (
@@ -186,11 +201,92 @@ export default function InvestigationsPage() {
                       <span className={`evx-dash__event-kind k-${ev.kind.toLowerCase()}`}>{ev.kind}</span>
                       <span className="evx-dash__event-text">
                         <strong>{ev.title}</strong> — {ev.detail}
+                        {ev.source ? <span style={{ opacity: 0.55 }}> · {ev.source}</span> : null}
                       </span>
                     </div>
                   ))
                 )}
               </div>
+
+              <div className="evx-dash__context-grid">
+                <section className="evx-dash__context-card">
+                  <p className="evx-dash__context-card-title">RUNTIME SIGNALS · SIGNOZ</p>
+                  {osContext.runtimeSignals.length === 0 ? (
+                    <p className="evx-dash__stat-note">No runtime signals stored yet.</p>
+                  ) : (
+                    <div className="evx-dash__table">
+                      {osContext.runtimeSignals.slice(0, 6).map((signal) => (
+                        <div key={signal.id} className="evx-dash__row" style={{ gridTemplateColumns: "72px 1fr 72px" }}>
+                          <span className="evx-dash__chip">{signal.metric ?? "trace"}</span>
+                          <span className="evx-dash__event-text">
+                            {signal.service ?? primaryService}
+                            {signal.traceId ? ` · ${signal.traceId.slice(0, 12)}…` : ""}
+                          </span>
+                          <span className="evx-dash__event-at">{signal.latencyMs ? `${signal.latencyMs}ms` : "—"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="evx-dash__context-card">
+                  <p className="evx-dash__context-card-title">CHANGE EVENTS · GITHUB</p>
+                  {osContext.changeEvents.length === 0 ? (
+                    <p className="evx-dash__stat-note">No deploy/commit events correlated yet.</p>
+                  ) : (
+                    <div className="evx-dash__table">
+                      {osContext.changeEvents.map((event) => (
+                        <div key={event.id} className="evx-dash__row" style={{ gridTemplateColumns: "72px 1fr 64px" }}>
+                          <span className="evx-dash__chip">{event.type}</span>
+                          <span className="evx-dash__event-text">
+                            {formatChangeEvent(event.type, event.metadata)}
+                            {event.author ? ` · ${event.author}` : ""}
+                          </span>
+                          <span className="evx-dash__event-at">{formatEventTime(event.occurredAt)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+
+              {osContext.dependencies.nodes.length > 0 ? (
+                <section className="evx-dash__context-section">
+                  <p className="evx-dash__timeline-label">DEPENDENCY GRAPH</p>
+                  <div className="evx-dash__dep-flow">
+                    {osContext.dependencies.nodes.map((node) => (
+                      <span
+                        key={node.id}
+                        className={`evx-dash__dep-node ${node.healthy ? "is-healthy" : "is-unhealthy"}`}
+                        title={node.latencyMs ? `${node.latencyMs}ms` : undefined}
+                      >
+                        {node.name}
+                        {node.latencyMs ? ` · ${node.latencyMs}ms` : ""}
+                      </span>
+                    ))}
+                    {osContext.dependencies.edges.map((edge) => (
+                      <span key={edge.id} className="evx-dash__dep-arrow">
+                        {edge.source} → {edge.destination}
+                      </span>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {osContext.evidence.length > 0 ? (
+                <section className="evx-dash__context-section">
+                  <p className="evx-dash__timeline-label">EVIDENCE STORE · {osContext.evidence.length} ROWS</p>
+                  <div className="evx-dash__table">
+                    {osContext.evidence.slice(0, 8).map((item) => (
+                      <div key={item.id} className="evx-dash__row" style={{ gridTemplateColumns: "72px 1fr 64px" }}>
+                        <span className="evx-dash__chip">{item.type}</span>
+                        <span className="evx-dash__event-text">{item.description}</span>
+                        <span className="evx-dash__event-at">{formatEventTime(item.occurredAt)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
             </>
           ) : (
             <p className="evx-dash__stat-note">Select a case to view details.</p>
