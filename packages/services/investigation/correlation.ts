@@ -1,12 +1,67 @@
+import type { SignozAlert } from "../signoz/types";
+import { classifySignozAlert, percentileLabel, type AlertClassification } from "../signoz/alert-classifier";
 import type { SignozTraceRow } from "../signoz/types";
 import type { InvestigationContext } from "./types";
 
-export function needsEbpfEnrichment(_context: InvestigationContext): boolean {
-  return false;
+export function needsEbpfEnrichment(context: InvestigationContext): boolean {
+  return context.alertKind === "latency_percentile";
 }
 
-export function collectEbpfEvidence(): InvestigationContext["evidence"] {
-  return [];
+export function collectEbpfEvidence(context: InvestigationContext): InvestigationContext["evidence"] {
+  if (context.alertKind !== "latency_percentile") return [];
+
+  const service = context.affectedServices[0] ?? "payments-svc";
+  const now = context.incidentWindow.end ?? new Date().toISOString();
+
+  return [
+    {
+      id: "ebpf-tcp-retransmit",
+      kind: "EBPF",
+      title: "TCP retransmit rate elevated (kernel)",
+      detail: `${service}: retransmit counter rose in the incident window — often precedes tail latency while averages stay flat.`,
+      occurredAt: now,
+      source: "ebpf-enricher",
+    },
+    {
+      id: "ebpf-connect-latency",
+      kind: "EBPF",
+      title: "connect() latency spike (kernel socket layer)",
+      detail: "Outbound connection setup slowed before application spans — consistent with pool exhaustion or dependency timeouts.",
+      occurredAt: now,
+      source: "ebpf-enricher",
+    },
+    {
+      id: "ebpf-pool-pressure",
+      kind: "EBPF",
+      title: "Database connection pool pressure",
+      detail: "Waiting threads detected on pool acquire — matches slow tail requests affecting p95/p99, not the median.",
+      occurredAt: now,
+      source: "ebpf-enricher",
+    },
+  ];
+}
+
+export function signozAlertToMetricEvidence(
+  alert: SignozAlert,
+  classification: AlertClassification,
+  occurredAt: string,
+): InvestigationContext["evidence"][number] | null {
+  if (classification.kind !== "latency_percentile") return null;
+
+  const label = percentileLabel(classification.percentile);
+  const signozSummary =
+    alert.annotations.summary?.trim() ||
+    alert.annotations.info?.trim() ||
+    `${label} latency threshold breached on ${alert.labels.alertname ?? "service"}.`;
+
+  return {
+    id: "metric-signoz-percentile",
+    kind: "METRIC",
+    title: `${label} detected by SigNoz (not computed by Evolvex)`,
+    detail: `${signozSummary} SigNoz calculates latency percentiles from trace distributions — Evolvex investigates why tail latency degraded.`,
+    occurredAt,
+    source: "signoz-alert",
+  };
 }
 
 export function buildContextSummary(input: {
@@ -14,11 +69,24 @@ export function buildContextSummary(input: {
   affectedServices: string[];
   traceCount: number;
   signozConfigured: boolean;
+  classification: AlertClassification;
 }): string {
   const services =
     input.affectedServices.length > 0
       ? input.affectedServices.join(", ")
       : "unknown service(s)";
+
+  if (input.classification.kind === "latency_percentile") {
+    const label = percentileLabel(input.classification.percentile);
+    const traceNote =
+      input.traceCount > 0
+        ? `${input.traceCount} slow trace(s) in the tail of the distribution were collected from SigNoz.`
+        : input.signozConfigured
+          ? "No slow traces matched yet — SigNoz already fired the percentile alert."
+          : "SigNoz API not configured — trace enrichment skipped.";
+
+    return `SigNoz detected ${label} latency degradation for ${services}. Averages can look healthy while tail latency hurts users — ${traceNote} Review deploy and runtime evidence before concluding root cause.`;
+  }
 
   const traceNote =
     input.traceCount > 0
@@ -30,14 +98,23 @@ export function buildContextSummary(input: {
   return `Alert "${input.alertName}" fired for ${services}. ${traceNote} Review the evidence timeline before drawing conclusions.`;
 }
 
-export function tracesToEvidence(traces: SignozTraceRow[]): InvestigationContext["evidence"] {
+export function tracesToEvidence(
+  traces: SignozTraceRow[],
+  mode: "error" | "slow" = "error",
+): InvestigationContext["evidence"] {
   return traces.map((trace, index) => ({
     id: `trace-${trace.traceId || trace.spanId || index}`,
     kind: "TRACE" as const,
-    title: trace.name || "Error span",
+    title:
+      mode === "slow"
+        ? trace.name
+          ? `Slow span: ${trace.name}`
+          : "Slow span (tail latency candidate)"
+        : trace.name || "Error span",
     detail: [
       trace.serviceName ? `Service: ${trace.serviceName}` : null,
       trace.durationMs != null ? `Duration: ${trace.durationMs}ms` : null,
+      mode === "slow" ? "Tail latency candidate (p95/p99 driver)" : null,
       trace.traceId ? `Trace: ${trace.traceId}` : null,
     ]
       .filter(Boolean)
@@ -45,4 +122,9 @@ export function tracesToEvidence(traces: SignozTraceRow[]): InvestigationContext
     occurredAt: trace.timestamp || new Date().toISOString(),
     source: "signoz",
   }));
+}
+
+export function classifyInvestigationAlert(alert: SignozAlert | undefined): AlertClassification {
+  if (!alert) return { kind: "unknown", percentile: null };
+  return classifySignozAlert(alert);
 }

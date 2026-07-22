@@ -12,6 +12,9 @@ export type LoadGeneratorConfig = {
   baselineSuccessTraces?: number;
   spikeErrorTraces?: number;
   spikeMetricIncrement?: number;
+  baselineFastTraces?: number;
+  spikeTailLatencyTraces?: number;
+  spikeTailLatencyMs?: number;
 };
 
 export type LoadGeneratorStats = {
@@ -42,6 +45,9 @@ export function loadGeneratorConfigFromEnv(): LoadGeneratorConfig | null {
     baselineSuccessTraces: readInt("SIGNOZ_LOAD_BASELINE_TRACES", 2),
     spikeErrorTraces: readInt("SIGNOZ_LOAD_SPIKE_ERRORS", 5),
     spikeMetricIncrement: readInt("SIGNOZ_LOAD_SPIKE_METRIC", 12),
+    baselineFastTraces: readInt("SIGNOZ_LOAD_BASELINE_FAST", 8),
+    spikeTailLatencyTraces: readInt("SIGNOZ_LOAD_SPIKE_TAIL", 2),
+    spikeTailLatencyMs: readInt("SIGNOZ_LOAD_SPIKE_TAIL_MS", 4800),
   };
 }
 
@@ -80,8 +86,10 @@ export class SignozLoadGenerator {
           },
           {
             serviceName,
-            errorCount: this.config.spikeErrorTraces ?? 5,
-            successCount: 1,
+            errorCount: this.config.spikeErrorTraces ?? 0,
+            fastSuccessCount: 12,
+            tailLatencyCount: this.config.spikeTailLatencyTraces ?? 2,
+            tailLatencyMs: this.config.spikeTailLatencyMs ?? 4800,
           },
         );
         await ingestMetrics(
@@ -96,6 +104,7 @@ export class SignozLoadGenerator {
         this.stats.lastSpikeAt = new Date().toISOString();
         logger.info("SigNoz loadgen spike sent", {
           serviceName,
+          tailLatency: this.config.spikeTailLatencyTraces,
           errors: this.config.spikeErrorTraces,
         });
       } else {
@@ -107,7 +116,7 @@ export class SignozLoadGenerator {
           {
             serviceName,
             errorCount: 0,
-            successCount: this.config.baselineSuccessTraces ?? 2,
+            fastSuccessCount: this.config.baselineFastTraces ?? 8,
           },
         );
         this.stats.lastBaselineAt = new Date().toISOString();

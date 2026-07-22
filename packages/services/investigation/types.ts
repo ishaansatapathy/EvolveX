@@ -18,6 +18,8 @@ export const investigationContextSchema = z.object({
     end: z.string(),
   }),
   signozConfigured: z.boolean(),
+  alertKind: z.enum(["latency_percentile", "error", "metric", "unknown"]).optional(),
+  latencyPercentile: z.enum(["p50", "p90", "p95", "p99"]).nullable().optional(),
   notes: z.array(z.string()).default([]),
 });
 

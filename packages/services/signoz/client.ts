@@ -51,10 +51,47 @@ export class SignozClient {
     endMs: number;
     limit?: number;
   }): Promise<SignozTraceRow[]> {
+    return this.searchTraces({
+      ...input,
+      filterParts: ["has_error = true", "parent_span_id = ''"],
+      orderKey: "timestamp",
+    });
+  }
+
+  async searchSlowTraces(input: {
+    serviceName?: string;
+    startMs: number;
+    endMs: number;
+    limit?: number;
+    minDurationMs?: number;
+  }): Promise<SignozTraceRow[]> {
+    const minDurationMs = input.minDurationMs ?? Number.parseInt(process.env.SIGNOZ_SLOW_TRACE_MS ?? "800", 10);
+    const minDurationNano = Math.max(1, minDurationMs) * 1_000_000;
+
+    return this.searchTraces({
+      serviceName: input.serviceName,
+      startMs: input.startMs,
+      endMs: input.endMs,
+      limit: input.limit,
+      filterParts: [`durationNano > ${minDurationNano}`, "parent_span_id = ''"],
+      orderKey: "durationNano",
+      orderDirection: "desc",
+    });
+  }
+
+  private async searchTraces(input: {
+    serviceName?: string;
+    startMs: number;
+    endMs: number;
+    limit?: number;
+    filterParts: string[];
+    orderKey: "timestamp" | "durationNano";
+    orderDirection?: "asc" | "desc";
+  }): Promise<SignozTraceRow[]> {
     const config = getSignozConfig();
     if (!config) return [];
 
-    const filterParts = ["has_error = true", "parent_span_id = ''"];
+    const filterParts = [...input.filterParts];
     if (input.serviceName) {
       filterParts.push(`service.name = '${input.serviceName.replace(/'/g, "''")}'`);
     }
@@ -84,7 +121,12 @@ export class SignozClient {
               ],
               limit: input.limit ?? 20,
               offset: 0,
-              order: [{ key: { name: "timestamp" }, direction: "desc" }],
+              order: [
+                {
+                  key: { name: input.orderKey },
+                  direction: input.orderDirection ?? "desc",
+                },
+              ],
             },
           },
         ],

@@ -10,8 +10,8 @@ import { logger } from "@repo/logger";
 
 import { isSignozConfigured, getDefaultServiceName } from "../signoz-env";
 import { signozClient } from "../signoz/client";
-import { buildDemoErrorTraces, isDemoTracesEnabled } from "../signoz/demo-traces";
-import type { SignozAlert, SignozWebhookPayload } from "../signoz/types";
+import { buildDemoErrorTraces, buildDemoSlowTraces, isDemoTracesEnabled } from "../signoz/demo-traces";
+import type { SignozAlert, SignozTraceRow, SignozWebhookPayload } from "../signoz/types";
 import {
   buildInvestigationTitle,
   extractServiceNames,
@@ -21,8 +21,10 @@ import {
 } from "../signoz/webhook-parser";
 import {
   buildContextSummary,
+  classifyInvestigationAlert,
   collectEbpfEvidence,
   needsEbpfEnrichment,
+  signozAlertToMetricEvidence,
   tracesToEvidence,
 } from "./correlation";
 import type {
@@ -65,6 +67,11 @@ function toTimelineEntry(row: SelectTimelineEntry): TimelineEntryDto {
     detail: row.detail,
     sourceRef: (row.sourceRef as Record<string, unknown> | null) ?? null,
   };
+}
+
+function alertFromStoredPayload(row: SelectInvestigation): SignozAlert | undefined {
+  const stored = row.signozAlertPayload as { alert?: SignozAlert } | null;
+  return stored?.alert;
 }
 
 class InvestigationService {
@@ -180,20 +187,32 @@ class InvestigationService {
       const service = row.affectedServices[0] ?? getDefaultServiceName();
       const startMs = row.incidentWindowStart?.getTime() ?? Date.now() - 15 * 60 * 1000;
       const endMs = row.incidentWindowEnd?.getTime() ?? Date.now();
-
+      const storedAlert = alertFromStoredPayload(row);
+      const classification = classifyInvestigationAlert(storedAlert);
+      const isLatencyIncident = classification.kind === "latency_percentile";
       let usedDemoFallback = false;
 
-      let traces = signozConfigured
-        ? await signozClient.searchErrorTraces({
-            serviceName: service,
-            startMs,
-            endMs,
-            limit: 10,
-          })
-        : [];
+      let traces: SignozTraceRow[] = [];
+      if (signozConfigured) {
+        traces = isLatencyIncident
+          ? await signozClient.searchSlowTraces({
+              serviceName: service,
+              startMs,
+              endMs,
+              limit: 10,
+            })
+          : await signozClient.searchErrorTraces({
+              serviceName: service,
+              startMs,
+              endMs,
+              limit: 10,
+            });
+      }
 
       if (traces.length === 0 && isDemoTracesEnabled()) {
-        traces = buildDemoErrorTraces(service ?? "payments-svc");
+        traces = isLatencyIncident
+          ? buildDemoSlowTraces(service ?? "payments-svc")
+          : buildDemoErrorTraces(service ?? "payments-svc");
         usedDemoFallback = true;
       }
 
@@ -206,29 +225,76 @@ class InvestigationService {
           ),
         );
 
-      if (traces.length > 0) {
-        const traceEvidence = tracesToEvidence(traces);
-        let sortOrder = 1;
-        for (const evidence of traceEvidence.slice(0, 10)) {
+      await db
+        .delete(investigationTimelineEntriesTable)
+        .where(
+          and(
+            eq(investigationTimelineEntriesTable.investigationId, investigationId),
+            eq(investigationTimelineEntriesTable.kind, "METRIC"),
+          ),
+        );
+
+      await db
+        .delete(investigationTimelineEntriesTable)
+        .where(
+          and(
+            eq(investigationTimelineEntriesTable.investigationId, investigationId),
+            eq(investigationTimelineEntriesTable.kind, "EBPF"),
+          ),
+        );
+
+      let sortOrder = 1;
+      const traceMode = isLatencyIncident ? "slow" : "error";
+      const traceEvidence = tracesToEvidence(traces, traceMode);
+
+      if (storedAlert) {
+        const metricEvidence = signozAlertToMetricEvidence(
+          storedAlert,
+          classification,
+          row.incidentWindowStart?.toISOString() ?? new Date().toISOString(),
+        );
+        if (metricEvidence) {
           await db.insert(investigationTimelineEntriesTable).values({
             investigationId,
-            occurredAt: new Date(evidence.occurredAt),
-            kind: "TRACE",
-            title: evidence.title,
-            detail: evidence.detail,
-            sourceRef: { source: "signoz" },
+            occurredAt: new Date(metricEvidence.occurredAt),
+            kind: "METRIC",
+            title: metricEvidence.title,
+            detail: metricEvidence.detail,
+            sourceRef: { source: "signoz-alert", percentile: classification.percentile },
             sortOrder: sortOrder++,
           });
         }
       }
 
+      for (const evidence of traceEvidence.slice(0, 10)) {
+        await db.insert(investigationTimelineEntriesTable).values({
+          investigationId,
+          occurredAt: new Date(evidence.occurredAt),
+          kind: "TRACE",
+          title: evidence.title,
+          detail: evidence.detail,
+          sourceRef: { source: "signoz", mode: traceMode },
+          sortOrder: sortOrder++,
+        });
+      }
+
       const alertName = row.alertName ?? "SigNoz alert";
+      const incidentWindow = {
+        start: new Date(startMs).toISOString(),
+        end: new Date(endMs).toISOString(),
+      };
+
+      const metricFromAlert = storedAlert
+        ? signozAlertToMetricEvidence(storedAlert, classification, incidentWindow.start)
+        : null;
+
       const context: InvestigationContext = {
         summary: buildContextSummary({
           alertName,
           affectedServices: row.affectedServices,
           traceCount: traces.length,
           signozConfigured,
+          classification,
         }),
         evidence: [
           {
@@ -239,22 +305,41 @@ class InvestigationService {
             occurredAt: row.incidentWindowStart?.toISOString() ?? new Date().toISOString(),
             source: "signoz-webhook",
           },
-          ...tracesToEvidence(traces),
+          ...(metricFromAlert ? [metricFromAlert] : []),
+          ...traceEvidence,
         ],
         affectedServices: row.affectedServices,
-        incidentWindow: {
-          start: new Date(startMs).toISOString(),
-          end: new Date(endMs).toISOString(),
-        },
+        incidentWindow,
         signozConfigured,
+        alertKind: classification.kind,
+        latencyPercentile: classification.percentile,
         notes: usedDemoFallback
-          ? ["Demo trace evidence seeded locally (development only — use pnpm signoz:loadgen in production)."]
+          ? [
+              isLatencyIncident
+                ? "Demo slow-trace evidence seeded locally. SigNoz computes p95/p99 — Evolvex only investigates the alert."
+                : "Demo trace evidence seeded locally (development only — use pnpm signoz:loadgen in production).",
+            ]
           : [],
       };
 
       if (needsEbpfEnrichment(context)) {
-        context.evidence.push(...collectEbpfEvidence());
-        context.notes.push("eBPF enrichment requested — collector not enabled in this environment.");
+        const ebpfEvidence = collectEbpfEvidence(context);
+        context.evidence.push(...ebpfEvidence);
+        context.notes.push(
+          "Kernel/runtime enrichment attached for tail-latency investigation (connection pool / TCP / syscall context).",
+        );
+
+        for (const evidence of ebpfEvidence) {
+          await db.insert(investigationTimelineEntriesTable).values({
+            investigationId,
+            occurredAt: new Date(evidence.occurredAt),
+            kind: "EBPF",
+            title: evidence.title,
+            detail: evidence.detail,
+            sourceRef: { source: "ebpf-enricher" },
+            sortOrder: sortOrder++,
+          });
+        }
       }
 
       await db

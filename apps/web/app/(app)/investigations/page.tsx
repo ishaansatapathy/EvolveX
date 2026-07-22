@@ -96,6 +96,8 @@ export default function InvestigationsPage() {
             2. Expose <code>POST /webhooks/signoz</code> via ngrok and set it in SigNoz Notification Channels
             <br />
             3. Fire a test alert — Evolvex will open a case file automatically
+            <br />
+            4. For tail latency: run <code>pnpm signoz:p99</code>, then create a SigNoz <strong>p99 latency</strong> alert (SigNoz computes percentiles — Evolvex investigates)
           </p>
           <div className="evx-dash__cause-actions" style={{ marginTop: "1rem" }}>
             <Link href="/settings" className="evx-dash__btn-primary">

@@ -14,7 +14,8 @@
     "check-types": "turbo run check-types",
     "signoz:seed": "dotenv -- pnpm exec tsx scripts/signoz-seed-demo.ts",
     "signoz:loadgen": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts",
-    "signoz:spike": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts --spike"
+    "signoz:spike": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts --spike",
+    "signoz:p99": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts --p99"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0",

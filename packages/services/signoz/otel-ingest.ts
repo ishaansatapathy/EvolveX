@@ -10,6 +10,11 @@ export type TraceBatchOptions = {
   serviceName: string;
   errorCount: number;
   successCount?: number;
+  /** Healthy ~100ms requests — keeps average latency looking fine in SigNoz */
+  fastSuccessCount?: number;
+  /** Slow tail requests (2–5s) — drives p95/p99 up in SigNoz (SigNoz computes percentiles, not Evolvex) */
+  tailLatencyCount?: number;
+  tailLatencyMs?: number;
 };
 
 function randomHex(bytes: number) {
@@ -20,17 +25,26 @@ function nowNano(offsetMs = 0) {
   return (BigInt(Date.now() + offsetMs) * 1_000_000n).toString();
 }
 
-function buildCheckoutTrace(serviceName: string, withError: boolean, offsetMs: number) {
+function buildCheckoutTrace(
+  serviceName: string,
+  withError: boolean,
+  offsetMs: number,
+  totalDurationMs = 100,
+) {
   const traceId = randomHex(16);
   const rootSpanId = randomHex(8);
   const cartSpanId = randomHex(8);
   const dbSpanId = randomHex(8);
   const rootStart = nowNano(offsetMs);
+  const dbDurationMs = Math.max(40, Math.round(totalDurationMs * 0.75));
+  const cartDurationMs = Math.max(8, Math.round(totalDurationMs * 0.08));
+  const rootOverheadMs = Math.max(5, totalDurationMs - dbDurationMs - cartDurationMs);
+
   const cartStart = (BigInt(rootStart) + 12_000_000n).toString();
-  const dbStart = (BigInt(cartStart) + 45_000_000n).toString();
-  const dbEnd = (BigInt(dbStart) + 380_000_000n).toString();
+  const dbStart = (BigInt(cartStart) + BigInt(cartDurationMs) * 1_000_000n).toString();
+  const dbEnd = (BigInt(dbStart) + BigInt(dbDurationMs) * 1_000_000n).toString();
   const cartEnd = (BigInt(dbEnd) + 8_000_000n).toString();
-  const rootEnd = (BigInt(cartEnd) + 15_000_000n).toString();
+  const rootEnd = (BigInt(cartEnd) + BigInt(rootOverheadMs) * 1_000_000n).toString();
 
   const errorStatus = { code: 2, message: "checkout pipeline failure — inventory lock timeout" };
   const okStatus = { code: 1 };
@@ -82,14 +96,31 @@ function buildCheckoutTrace(serviceName: string, withError: boolean, offsetMs: n
 export function buildTracePayload(options: TraceBatchOptions) {
   const serviceName = options.serviceName;
   const successCount = options.successCount ?? 0;
+  const fastSuccessCount = options.fastSuccessCount ?? 0;
+  const tailLatencyCount = options.tailLatencyCount ?? 0;
+  const tailLatencyMs = options.tailLatencyMs ?? 4_800;
   const spans = [];
+  let offsetIndex = 0;
+
+  const nextOffset = () => {
+    offsetIndex += 1;
+    return -offsetIndex * 4_000;
+  };
 
   for (let i = 0; i < options.errorCount; i += 1) {
-    spans.push(...buildCheckoutTrace(serviceName, true, -(i + 1) * 15_000));
+    spans.push(...buildCheckoutTrace(serviceName, true, nextOffset(), 420));
+  }
+
+  for (let i = 0; i < tailLatencyCount; i += 1) {
+    spans.push(...buildCheckoutTrace(serviceName, false, nextOffset(), tailLatencyMs));
+  }
+
+  for (let i = 0; i < fastSuccessCount; i += 1) {
+    spans.push(...buildCheckoutTrace(serviceName, false, nextOffset(), 100));
   }
 
   for (let i = 0; i < successCount; i += 1) {
-    spans.push(...buildCheckoutTrace(serviceName, false, -(options.errorCount + i + 1) * 8_000));
+    spans.push(...buildCheckoutTrace(serviceName, false, nextOffset(), 120));
   }
 
   return {

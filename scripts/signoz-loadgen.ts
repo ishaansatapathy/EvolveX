@@ -11,11 +11,12 @@ function parseArgs() {
   const args = process.argv.slice(2);
   const once = args.includes("--once");
   const spikeOnly = args.includes("--spike");
-  const continuous = args.includes("--continuous") || (!once && !spikeOnly);
-  return { once, spikeOnly, continuous };
+  const p99Only = args.includes("--p99");
+  const continuous = args.includes("--continuous") || (!once && !spikeOnly && !p99Only);
+  return { once, spikeOnly, p99Only, continuous };
 }
 
-async function runOnce(spikeOnly: boolean) {
+async function runOnce(mode: "baseline" | "spike" | "p99") {
   const ingestionKey = process.env.SIGNOZ_INGESTION_KEY?.trim();
   if (!ingestionKey) {
     throw new Error("SIGNOZ_INGESTION_KEY is required for production telemetry.");
@@ -24,22 +25,46 @@ async function runOnce(spikeOnly: boolean) {
   const serviceName = getDefaultServiceName();
   const config = { ingestionKey, ingestionUrl: process.env.SIGNOZ_INGESTION_URL };
 
-  if (spikeOnly) {
-    await ingestTraces(config, { serviceName, errorCount: 5, successCount: 1 });
-    await ingestMetrics(config, serviceName, 12);
-    console.log(`Spike sent for ${serviceName} (errors + signoz_calls_total)`);
+  if (mode === "p99") {
+    await ingestTraces(config, {
+      serviceName,
+      errorCount: 0,
+      fastSuccessCount: 20,
+      tailLatencyCount: 3,
+      tailLatencyMs: Number.parseInt(process.env.SIGNOZ_LOAD_SPIKE_TAIL_MS ?? "4800", 10),
+    });
+    console.log(`Tail latency batch sent for ${serviceName} (many ~100ms + few ~4.8s requests).`);
+    console.log("SigNoz computes p95/p99 from these traces — configure a p99 latency alert in SigNoz to trigger Evolvex.");
     return;
   }
 
-  await ingestTraces(config, { serviceName, errorCount: 0, successCount: 2 });
-  console.log(`Baseline traces sent for ${serviceName}`);
+  if (mode === "spike") {
+    await ingestTraces(config, {
+      serviceName,
+      errorCount: 3,
+      fastSuccessCount: 10,
+      tailLatencyCount: 2,
+      tailLatencyMs: 4800,
+    });
+    await ingestMetrics(config, serviceName, 12);
+    console.log(`Spike sent for ${serviceName} (errors + tail latency + signoz_calls_total)`);
+    return;
+  }
+
+  await ingestTraces(config, { serviceName, errorCount: 0, fastSuccessCount: 8 });
+  console.log(`Baseline fast traces sent for ${serviceName}`);
 }
 
 async function main() {
-  const { once, spikeOnly, continuous } = parseArgs();
+  const { once, spikeOnly, p99Only, continuous } = parseArgs();
+
+  if (p99Only) {
+    await runOnce("p99");
+    return;
+  }
 
   if (once || spikeOnly) {
-    await runOnce(spikeOnly);
+    await runOnce(spikeOnly ? "spike" : "baseline");
     return;
   }
 
@@ -47,7 +72,8 @@ async function main() {
     console.log("Usage:");
     console.log("  pnpm signoz:loadgen              # continuous baseline + periodic spikes");
     console.log("  pnpm signoz:loadgen --once       # one baseline batch");
-    console.log("  pnpm signoz:loadgen --spike      # one error spike + metric bump");
+    console.log("  pnpm signoz:loadgen --spike      # error + tail latency spike");
+    console.log("  pnpm signoz:loadgen --p99        # tail latency only (SigNoz computes p99)");
     return;
   }
 
@@ -62,6 +88,7 @@ async function main() {
   console.log("Production load generator running (Ctrl+C to stop)");
   console.log(`Service: ${config.serviceName}`);
   console.log(`Baseline every ${config.baselineIntervalMs}ms | Spike every ${config.spikeIntervalMs}ms`);
+  console.log("SigNoz calculates p95/p99 — Evolvex investigates when those alerts fire.");
 
   const heartbeat = setInterval(() => {
     const stats = generator.getStats();
