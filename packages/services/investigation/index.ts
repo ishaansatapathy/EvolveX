@@ -28,11 +28,14 @@ import {
 import {
   buildContextSummary,
   classifyInvestigationAlert,
+  logsToEvidence,
   needsEbpfEnrichment,
   signozAlertToMetricEvidence,
   tracesToEvidence,
 } from "./correlation";
 import { enrichEbpfFromSignozMetrics } from "../ebpf/signoz-metrics";
+import { suggestInvestigationFix } from "./fix-suggestion";
+import { computeInvestigationPinpoint, loadPinpointFileSnippet } from "./pinpoint";
 import { parseEbpfEvent, type EbpfEventPayload } from "../ebpf/webhook-parser";
 import { parseGithubDeployEvent, type GithubPushPayload } from "../github/webhook-parser";
 import { parseKubernetesEvent, type KubernetesEventPayload } from "../kubernetes/webhook-parser";
@@ -441,20 +444,29 @@ class InvestigationService {
       const isLatencyIncident = classification.kind === "latency_percentile";
 
       let traces: SignozTraceRow[] = [];
+      let logs: Awaited<ReturnType<typeof signozClient.searchLogs>> = [];
       if (signozConfigured) {
-        traces = isLatencyIncident
-          ? await signozClient.searchSlowTraces({
-              serviceName: service,
-              startMs,
-              endMs,
-              limit: 10,
-            })
-          : await signozClient.searchErrorTraces({
-              serviceName: service,
-              startMs,
-              endMs,
-              limit: 10,
-            });
+        [traces, logs] = await Promise.all([
+          isLatencyIncident
+            ? signozClient.searchSlowTraces({
+                serviceName: service,
+                startMs,
+                endMs,
+                limit: 10,
+              })
+            : signozClient.searchErrorTraces({
+                serviceName: service,
+                startMs,
+                endMs,
+                limit: 10,
+              }),
+          signozClient.searchLogs({
+            serviceName: service,
+            startMs,
+            endMs,
+            limit: 15,
+          }),
+        ]);
       }
 
       await db
@@ -484,11 +496,21 @@ class InvestigationService {
           ),
         );
 
+      await db
+        .delete(investigationTimelineEntriesTable)
+        .where(
+          and(
+            eq(investigationTimelineEntriesTable.investigationId, investigationId),
+            eq(investigationTimelineEntriesTable.kind, "LOG"),
+          ),
+        );
+
       await clearDerivedInvestigationRows(investigationId);
 
       let sortOrder = 1;
       const traceMode = isLatencyIncident ? "slow" : "error";
       const traceEvidence = tracesToEvidence(traces, traceMode);
+      const logEvidence = logsToEvidence(logs);
 
       if (storedAlert) {
         const metricEvidence = signozAlertToMetricEvidence(
@@ -524,6 +546,18 @@ class InvestigationService {
         });
       }
 
+      for (const evidence of logEvidence.slice(0, 6)) {
+        await insertTimelineEntry({
+          investigationId,
+          occurredAt: new Date(evidence.occurredAt),
+          kind: "LOG",
+          title: evidence.title,
+          detail: evidence.detail,
+          source: "signoz-logs",
+          sortOrder: sortOrder++,
+        });
+      }
+
       const alertName = row.alertName ?? "SigNoz alert";
       const incidentWindow = {
         start: new Date(startMs).toISOString(),
@@ -553,6 +587,7 @@ class InvestigationService {
           },
           ...(metricFromAlert ? [metricFromAlert] : []),
           ...traceEvidence,
+          ...logEvidence,
         ],
         affectedServices: row.affectedServices,
         incidentWindow,
@@ -996,6 +1031,79 @@ class InvestigationService {
       createdAt: created.createdAt.toISOString(),
       updatedAt: created.updatedAt?.toISOString() ?? null,
     };
+  }
+
+  async getPinpoint(investigationId: string, userId: string) {
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || !canAccessInvestigation(row, userId)) return null;
+
+    const changeEvents = await db
+      .select()
+      .from(changeEventsTable)
+      .where(eq(changeEventsTable.investigationId, investigationId))
+      .orderBy(asc(changeEventsTable.occurredAt));
+
+    const service = row.primaryService ?? row.affectedServices[0] ?? getDefaultServiceName();
+    const startMs = row.incidentWindowStart?.getTime() ?? Date.now() - 15 * 60 * 1000;
+    const endMs = row.incidentWindowEnd?.getTime() ?? Date.now();
+
+    return computeInvestigationPinpoint({
+      investigationId,
+      service,
+      startMs,
+      endMs,
+      changeEvents: changeEvents.map((event) => ({
+        id: event.id,
+        type: event.type,
+        service: event.service,
+        author: event.author,
+        occurredAt: event.occurredAt.toISOString(),
+        metadata: (event.metadata as Record<string, unknown>) ?? {},
+      })),
+    });
+  }
+
+  async suggestFix(investigationId: string, userId: string) {
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || !canAccessInvestigation(row, userId)) return null;
+
+    const context = await this.getOsContext(investigationId, userId);
+    if (!context) return null;
+
+    const pinpoint = await this.getPinpoint(investigationId, userId);
+    if (!pinpoint?.primary) return null;
+
+    const primary = pinpoint.primary;
+    let fileSnippet: string | null = null;
+
+    if (primary.repo && primary.commitSha && primary.line > 0) {
+      fileSnippet = await loadPinpointFileSnippet({
+        repo: primary.repo,
+        ref: primary.commitSha,
+        file: primary.file,
+        line: primary.line,
+      });
+    }
+
+    const service = row.primaryService ?? row.affectedServices[0] ?? getDefaultServiceName();
+
+    return suggestInvestigationFix({
+      investigationTitle: row.title,
+      service,
+      pinpoint,
+      timelineSummary: row.summary ?? context.investigation.summary ?? row.title,
+      fileSnippet,
+    });
   }
 
   async regenerateSummary(investigationId: string, userId: string) {

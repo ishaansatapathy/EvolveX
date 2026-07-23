@@ -34,6 +34,8 @@ Select case → show:
 - **Evidence Timeline** — ALERT → METRIC → TRACE from SigNoz API
 - **Change Events** — GitHub push or K8s event if correlated
 - **AI Root Cause** — OpenAI markdown (only from collected evidence)
+- **Pinpoint** — exact file:line from error logs + GitHub deploy correlation
+- **Suggest fix** — optional LLM patch preview (user copies manually)
 - **Engineer Notes** — add a live note
 
 ### 4. Live telemetry (60s)

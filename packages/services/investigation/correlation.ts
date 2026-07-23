@@ -64,6 +64,22 @@ export function buildContextSummary(input: {
   return `Alert "${input.alertName}" fired for ${services}. ${traceNote} Review the evidence timeline before drawing conclusions.`;
 }
 
+export function logsToEvidence(
+  logs: Array<{ timestamp?: string; body?: string; severityText?: string; traceId?: string }>,
+): InvestigationContext["evidence"] {
+  return logs
+    .filter((log) => /error|warn|fatal|panic/i.test(log.severityText ?? "") || /error|exception|panic|fail/i.test(log.body ?? ""))
+    .slice(0, 8)
+    .map((log, index) => ({
+      id: `log-${log.traceId || index}`,
+      kind: "LOG" as const,
+      title: log.severityText ? `${log.severityText} log` : "Error log",
+      detail: (log.body ?? "").slice(0, 280) || "Error log entry from SigNoz",
+      occurredAt: log.timestamp || new Date().toISOString(),
+      source: "signoz-logs",
+    }));
+}
+
 export function tracesToEvidence(
   traces: SignozTraceRow[],
   mode: "error" | "slow" = "error",

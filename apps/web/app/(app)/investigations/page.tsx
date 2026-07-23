@@ -81,12 +81,19 @@ export default function InvestigationsPage() {
     },
   });
 
+  const suggestFixMutation = trpc.investigations.suggestFix.useMutation();
+  const [fixPreview, setFixPreview] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
 
   const osContext = contextQuery.data;
   const timeline = osContext?.timeline ?? [];
   const primaryService =
     osContext?.investigation.primaryService ?? activeListItem?.affectedServices[0] ?? "unknown";
+
+  const pinpointQuery = trpc.investigations.pinpoint.useQuery(
+    { id: activeId ?? "" },
+    { enabled: Boolean(activeId) && osContext?.investigation.status === "ready" },
+  );
 
   const stats = useMemo(() => {
     const open = investigations.length;
@@ -209,6 +216,71 @@ export default function InvestigationsPage() {
                   </Link>
                 </div>
               </div>
+
+              {pinpointQuery.data?.primary ? (
+                <section className="evx-dash__context-card evx-dash__pinpoint-card">
+                  <p className="evx-dash__context-card-title">📍 LIKELY CULPRIT · PINPOINT</p>
+                  <p className="evx-dash__pinpoint-file">
+                    {pinpointQuery.data.primary.file}
+                    {pinpointQuery.data.primary.line > 0 ? `:${pinpointQuery.data.primary.line}` : ""}
+                  </p>
+                  <p className="evx-dash__stat-note">{pinpointQuery.data.primary.evidence}</p>
+                  <div className="evx-dash__toolbar" style={{ marginTop: "0.65rem" }}>
+                    <span className={`evx-dash__chip evx-dash__chip--${pinpointQuery.data.primary.confidence}`}>
+                      {pinpointQuery.data.primary.confidence} confidence
+                    </span>
+                    <span className="evx-dash__chip">{pinpointQuery.data.primary.source.replace("_", " ")}</span>
+                    {pinpointQuery.data.primary.githubUrl ? (
+                      <a
+                        href={pinpointQuery.data.primary.githubUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="evx-dash__btn-ghost"
+                      >
+                        View on GitHub →
+                      </a>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="evx-dash__btn-primary"
+                      disabled={suggestFixMutation.isPending}
+                      onClick={async () => {
+                        if (!activeId) return;
+                        const result = await suggestFixMutation.mutateAsync({ id: activeId });
+                        if (result) setFixPreview(result.patch);
+                      }}
+                    >
+                      {suggestFixMutation.isPending ? "Analyzing…" : "Suggest fix →"}
+                    </button>
+                  </div>
+                  {pinpointQuery.data.deployCorrelation ? (
+                    <p className="evx-dash__stat-note" style={{ marginTop: "0.45rem" }}>
+                      Deploy:{" "}
+                      <a href={pinpointQuery.data.deployCorrelation.url} target="_blank" rel="noreferrer">
+                        {pinpointQuery.data.deployCorrelation.repo}@{pinpointQuery.data.deployCorrelation.sha.slice(0, 7)}
+                      </a>
+                      {pinpointQuery.data.deployCorrelation.changedFiles.length
+                        ? ` · ${pinpointQuery.data.deployCorrelation.changedFiles.slice(0, 4).join(", ")}`
+                        : null}
+                    </p>
+                  ) : null}
+                  {fixPreview ? (
+                    <pre className="evx-dash__fix-preview">{fixPreview}</pre>
+                  ) : null}
+                  {fixPreview ? (
+                    <button
+                      type="button"
+                      className="evx-dash__btn-ghost"
+                      style={{ marginTop: "0.5rem" }}
+                      onClick={() => void navigator.clipboard.writeText(fixPreview)}
+                    >
+                      Copy patch
+                    </button>
+                  ) : null}
+                </section>
+              ) : pinpointQuery.isLoading ? (
+                <p className="evx-dash__stat-note">Scanning logs for file:line pinpoint…</p>
+              ) : null}
 
               {osContext.llmSummary ? (
                 <section className="evx-dash__cause" style={{ transform: "rotate(0.4deg)" }}>

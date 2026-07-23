@@ -6,6 +6,7 @@ import {
   timelineEntrySchema,
 } from "@repo/services/investigation/types";
 import { isOpenAiConfigured } from "@repo/services/ai/openai";
+import { isGithubApiConfigured } from "@repo/services/github/api";
 import {
   getSignozConfig,
   getSignozWebhookPublicUrl,
@@ -61,6 +62,7 @@ export const investigationsRouter = router({
         ingestionConfigured: z.boolean(),
         openAiConfigured: z.boolean(),
         otelApiEnabled: z.boolean(),
+        githubApiConfigured: z.boolean(),
       }),
     )
     .query(async () => {
@@ -81,6 +83,7 @@ export const investigationsRouter = router({
         ingestionConfigured: Boolean(process.env.SIGNOZ_INGESTION_KEY?.trim()),
         openAiConfigured: isOpenAiConfigured(),
         otelApiEnabled: Boolean(process.env.SIGNOZ_INGESTION_KEY?.trim()),
+        githubApiConfigured: isGithubApiConfigured(),
       };
     }),
 
@@ -247,6 +250,76 @@ export const investigationsRouter = router({
           markdown: result.markdown,
           generatedAt: result.generatedAt.toISOString(),
         };
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  pinpoint: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .output(
+      z
+        .object({
+          primary: z
+            .object({
+              file: z.string(),
+              line: z.number(),
+              column: z.number().optional(),
+              confidence: z.enum(["high", "medium", "low"]),
+              source: z.enum(["log_stack", "github_diff", "correlated"]),
+              evidence: z.string(),
+              githubUrl: z.string().optional(),
+              repo: z.string().optional(),
+              commitSha: z.string().optional(),
+            })
+            .nullable(),
+          candidates: z.array(
+            z.object({
+              file: z.string(),
+              line: z.number(),
+              confidence: z.enum(["high", "medium", "low"]),
+              source: z.enum(["log_stack", "github_diff", "correlated"]),
+              evidence: z.string(),
+              githubUrl: z.string().optional(),
+            }),
+          ),
+          deployCorrelation: z
+            .object({
+              repo: z.string(),
+              sha: z.string(),
+              message: z.string().optional(),
+              url: z.string(),
+              changedFiles: z.array(z.string()),
+            })
+            .nullable(),
+          githubApiConfigured: z.boolean(),
+        })
+        .nullable(),
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        return await investigationService.getPinpoint(input.id, ctx.user.id);
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  suggestFix: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .output(
+      z
+        .object({
+          explanation: z.string(),
+          patch: z.string(),
+          file: z.string(),
+          generatedAt: z.string(),
+          disclaimer: z.string(),
+        })
+        .nullable(),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await investigationService.suggestFix(input.id, ctx.user.id);
       } catch (error) {
         mapServiceError(error);
       }

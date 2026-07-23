@@ -101,9 +101,12 @@ export default function SettingsPage() {
 
         <article className="evx-dash__settings-card">
           <p className="evx-dash__settings-label">CONNECTIONS · GITHUB</p>
-          <p className="evx-dash__settings-value">Deploy correlation</p>
+          <p className="evx-dash__settings-value">Deploy correlation + pinpoint</p>
           <p className="evx-dash__stat-note" style={{ marginTop: "0.4rem" }}>
             Webhook URL: {status?.githubWebhookUrl ?? "—"}
+          </p>
+          <p className="evx-dash__stat-note">
+            API token: {status?.githubApiConfigured ? "Configured (diff + file fetch)" : "Set GITHUB_TOKEN for pinpoint"}
           </p>
           <p className="evx-dash__stat-note">Event: push · verified via X-Hub-Signature-256</p>
           <div className="evx-dash__cause-actions" style={{ marginTop: "0.9rem" }}>
