@@ -8,10 +8,15 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@opentelemetry/auto-instrumentations-node": "^0.78.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
     "@repo/database": "workspace:*",
     "@repo/logger": "workspace:*",
-    "dotenv": "^17.2.3",
     "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.3",
     "google-auth-library": "^10.5.0",
     "jsonwebtoken": "^9.0.2",
     "redis": "^5.8.2",

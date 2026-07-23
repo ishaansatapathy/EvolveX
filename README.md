@@ -63,6 +63,7 @@ Set `DEMO_LOGIN_ENABLED=true` and seed credentials in `.env` for judge access.
 ```bash
 pnpm signoz:loadgen   # Send real traces to SigNoz
 pnpm signoz:p99       # Tail latency load for p99 alerts
+pnpm investigation:seed  # Seed a real investigation via webhook handler
 pnpm db:seed          # Seed auth demo user
 ```
 

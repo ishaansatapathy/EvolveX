@@ -40,12 +40,18 @@ export default function TracesPageContent() {
     },
   );
 
+  const liveStatsQuery = trpc.telemetry.liveStats.useQuery(
+    { serviceName: serviceFilter || undefined, range: "15m" },
+    {
+      enabled: signozStatus.data?.configured === true && !useCaseScope,
+      refetchInterval: 5000,
+    },
+  );
+
   const activeQuery = useCaseScope ? caseQuery : liveQuery;
 
   const filtered = useMemo(() => {
-    const rows = useCaseScope
-      ? (caseQuery.data?.traces ?? [])
-      : (liveQuery.data?.traces ?? []);
+    const rows = useCaseScope ? (caseQuery.data?.traces ?? []) : (liveQuery.data?.traces ?? []);
 
     return rows
       .map((trace, index) => {
@@ -54,11 +60,7 @@ export default function TracesPageContent() {
         return {
           id: trace.traceId ?? trace.spanId ?? String(index),
           name: trace.name ?? "span",
-          service:
-            trace.serviceName ??
-            caseQuery.data?.service ??
-            serviceFilter ??
-            "unknown",
+          service: trace.serviceName ?? caseQuery.data?.service ?? serviceFilter ?? "unknown",
           durationMs,
           status: rowStatus,
           timestamp: trace.timestamp,
@@ -66,6 +68,8 @@ export default function TracesPageContent() {
       })
       .filter((trace) => status === "ALL" || trace.status === status);
   }, [useCaseScope, caseQuery.data, liveQuery.data, serviceFilter, status]);
+
+  const stats = liveStatsQuery.data;
 
   return (
     <>
@@ -75,6 +79,42 @@ export default function TracesPageContent() {
           <span className="evx-dash__chip">Live · 15m · refreshes 5s</span>
         ) : null}
       </AppPageHeader>
+
+      {!useCaseScope && stats ? (
+        <section className="evx-dash__stats">
+          <article className="evx-dash__stat">
+            <p className="evx-dash__stat-label">LIVE SPANS</p>
+            <p className="evx-dash__stat-value">{stats.total}</p>
+            <p className="evx-dash__stat-note">Last 15 minutes from SigNoz</p>
+          </article>
+          <article className="evx-dash__stat">
+            <p className="evx-dash__stat-label">EVOLVEX API</p>
+            <p className="evx-dash__stat-value">{stats.evolvexApiCount}</p>
+            <p className="evx-dash__stat-note">Self-instrumented traffic</p>
+          </article>
+          <article className="evx-dash__stat">
+            <p className="evx-dash__stat-label">ERRORS / SLOW</p>
+            <p className="evx-dash__stat-value">
+              {stats.errors}/{stats.slow}
+            </p>
+            <p className="evx-dash__stat-note">Real span classification</p>
+          </article>
+        </section>
+      ) : null}
+
+      {!useCaseScope && stats && stats.byService.length > 0 ? (
+        <div className="evx-dash__toolbar">
+          {stats.byService.slice(0, 6).map((entry) => (
+            <Link
+              key={entry.service}
+              href={`/traces?service=${encodeURIComponent(entry.service)}`}
+              className="evx-dash__chip"
+            >
+              {entry.service} · {entry.count}
+            </Link>
+          ))}
+        </div>
+      ) : null}
 
       <div className="evx-dash__toolbar">
         <select className="evx-dash__select" value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
@@ -119,7 +159,7 @@ export default function TracesPageContent() {
           <p className="evx-dash__empty">
             {useCaseScope
               ? "No traces in this investigation window from SigNoz."
-              : "No traces in the last 15 minutes. Use the app or run pnpm signoz:loadgen to generate telemetry."}
+              : "No traces in the last 15 minutes. Browse the app or run pnpm signoz:loadgen to emit real telemetry."}
           </p>
         )}
       </div>

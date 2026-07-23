@@ -9,6 +9,7 @@ import {
   queryServiceMetrics,
   type TelemetryRange,
 } from "@repo/services/signoz/telemetry";
+import { computeLiveTraceStats } from "@repo/services/signoz/live-stats";
 
 import { mapServiceError, protectedProcedure, router } from "../../trpc";
 
@@ -150,6 +151,41 @@ export const telemetryRouter = router({
         requireSignoz();
         const range = (input?.range ?? "1h") as TelemetryRange;
         return queryServiceMetrics(range);
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  liveStats: protectedProcedure
+    .meta({ openapi: { method: "GET", path: "/telemetry/live-stats", tags: TAGS } })
+    .input(
+      z.object({
+        serviceName: z.string().optional(),
+        range: rangeSchema.optional(),
+      }).optional(),
+    )
+    .output(
+      z.object({
+        total: z.number(),
+        errors: z.number(),
+        slow: z.number(),
+        byService: z.array(z.object({ service: z.string(), count: z.number() })),
+        evolvexApiCount: z.number(),
+        evolvexWebCount: z.number(),
+        queriedAt: z.string(),
+        range: rangeSchema,
+      }),
+    )
+    .query(async ({ input }) => {
+      try {
+        requireSignoz();
+        const range = (input?.range ?? "15m") as TelemetryRange;
+        const traces = await queryRecentTraces({
+          serviceName: input?.serviceName,
+          range,
+          limit: 100,
+        });
+        return { ...computeLiveTraceStats(traces), range };
       } catch (error) {
         mapServiceError(error);
       }

@@ -1,8 +1,6 @@
 import http from "node:http";
 
-import { registerApiOtel } from "./register-otel";
-
-registerApiOtel();
+import "./register-otel";
 
 import { runApiBootstrap } from "./api-bootstrap";
 

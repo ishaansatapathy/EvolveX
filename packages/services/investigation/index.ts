@@ -634,6 +634,19 @@ class InvestigationService {
           occurredAt: event.occurredAt.toISOString(),
         })),
         runtimeSignalCount: runtimeCount.length,
+      }).then(async (llmResult) => {
+        if (!llmResult) return;
+
+        await insertTimelineEntry({
+          investigationId,
+          occurredAt: llmResult.generatedAt,
+          kind: "AI",
+          title: "AI root-cause summary generated",
+          detail: "OpenAI analysis stored from collected timeline evidence (no fabricated signals).",
+          source: "openai",
+          sourceRef: { model: process.env.OPENAI_MODEL ?? "gpt-4o-mini" },
+          sortOrder: sortOrder++,
+        });
       });
 
       await db
@@ -930,14 +943,6 @@ class InvestigationService {
   }
 
   async listNotes(investigationId: string, userId: string) {
-    const [row] = await db
-      .select({ id: investigationsTable.id })
-      .from(investigationsTable)
-      .where(eq(investigationsTable.id, investigationId))
-      .limit(1);
-
-    if (!row) return null;
-
     const [investigation] = await db
       .select()
       .from(investigationsTable)

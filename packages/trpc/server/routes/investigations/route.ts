@@ -5,6 +5,7 @@ import {
   investigationOsContextSchema,
   timelineEntrySchema,
 } from "@repo/services/investigation/types";
+import { isOpenAiConfigured } from "@repo/services/ai/openai";
 import {
   getSignozConfig,
   getSignozWebhookPublicUrl,
@@ -51,11 +52,15 @@ export const investigationsRouter = router({
         webhookAuthConfigured: z.boolean(),
         webhookUrl: z.string(),
         githubWebhookUrl: z.string(),
+        kubernetesWebhookUrl: z.string(),
+        ebpfWebhookUrl: z.string(),
         cloudUrl: z.string().nullable(),
         productionMode: z.boolean(),
         demoTracesEnabled: z.boolean(),
         defaultServiceName: z.string(),
         ingestionConfigured: z.boolean(),
+        openAiConfigured: z.boolean(),
+        otelApiEnabled: z.boolean(),
       }),
     )
     .query(async () => {
@@ -67,11 +72,15 @@ export const investigationsRouter = router({
         webhookAuthConfigured: Boolean(config?.webhookSecret),
         webhookUrl: getSignozWebhookPublicUrl(baseUrl),
         githubWebhookUrl: `${normalizedBase}/webhooks/github`,
+        kubernetesWebhookUrl: `${normalizedBase}/webhooks/kubernetes`,
+        ebpfWebhookUrl: `${normalizedBase}/webhooks/ebpf`,
         cloudUrl: config?.cloudUrl ?? null,
         productionMode: isProductionEnvironment(),
         demoTracesEnabled: isDemoTracesEnabled(),
         defaultServiceName: getDefaultServiceName(),
         ingestionConfigured: Boolean(process.env.SIGNOZ_INGESTION_KEY?.trim()),
+        openAiConfigured: isOpenAiConfigured(),
+        otelApiEnabled: Boolean(process.env.SIGNOZ_INGESTION_KEY?.trim()),
       };
     }),
 
