@@ -28,20 +28,22 @@ import {
 import {
   buildContextSummary,
   classifyInvestigationAlert,
-  collectEbpfEvidence,
   needsEbpfEnrichment,
   signozAlertToMetricEvidence,
   tracesToEvidence,
 } from "./correlation";
+import { enrichEbpfFromSignozMetrics } from "../ebpf/signoz-metrics";
+import { parseEbpfEvent, type EbpfEventPayload } from "../ebpf/webhook-parser";
 import { parseGithubDeployEvent, type GithubPushPayload } from "../github/webhook-parser";
+import { parseKubernetesEvent, type KubernetesEventPayload } from "../kubernetes/webhook-parser";
 import { resolveInvestigationOwnerUserId } from "./owner";
 import {
   buildPersistedSummary,
+  buildServiceGraphFromSignoz,
   clearDerivedInvestigationRows,
   insertTimelineEntry,
   persistChangeEvent,
   persistRuntimeSignalsFromTraces,
-  seedDefaultServiceGraph,
 } from "./persistence";
 import type {
   ChangeEventRowDto,
@@ -574,22 +576,29 @@ class InvestigationService {
       };
 
       if (needsEbpfEnrichment(context)) {
-        const ebpfEvidence = collectEbpfEvidence(context);
-        context.evidence.push(...ebpfEvidence);
-        context.notes.push(
-          "Kernel/runtime enrichment attached for tail-latency investigation (connection pool / TCP / syscall context).",
-        );
+        const ebpfEvidence = await enrichEbpfFromSignozMetrics({
+          service,
+          startMs,
+          endMs,
+        });
 
-        for (const evidence of ebpfEvidence) {
-          await insertTimelineEntry({
-            investigationId,
-            occurredAt: new Date(evidence.occurredAt),
-            kind: "EBPF",
-            title: evidence.title,
-            detail: evidence.detail,
-            source: "ebpf-enricher",
-            sortOrder: sortOrder++,
-          });
+        if (ebpfEvidence.length > 0) {
+          context.evidence.push(...ebpfEvidence);
+          context.notes.push(
+            "Kernel/network metrics loaded from SigNoz metrics pipeline (real eBPF-derived telemetry).",
+          );
+
+          for (const evidence of ebpfEvidence) {
+            await insertTimelineEntry({
+              investigationId,
+              occurredAt: new Date(evidence.occurredAt),
+              kind: "EBPF",
+              title: evidence.title,
+              detail: evidence.detail,
+              source: evidence.source ?? "signoz-metrics",
+              sortOrder: sortOrder++,
+            });
+          }
         }
       }
 
@@ -599,7 +608,7 @@ class InvestigationService {
         traces,
         classification,
       });
-      await seedDefaultServiceGraph(service);
+      await buildServiceGraphFromSignoz(service);
 
       const summaryText = buildPersistedSummary(context);
 
@@ -733,6 +742,167 @@ class InvestigationService {
     }
 
     return { attachedInvestigationIds };
+  }
+
+  private async findRecentInvestigationCandidates() {
+    const ownerUserId = await resolveInvestigationOwnerUserId();
+    const since = new Date(Date.now() - 6 * 60 * 60 * 1000);
+
+    return db
+      .select()
+      .from(investigationsTable)
+      .where(
+        and(
+          gte(investigationsTable.createdAt, since),
+          ownerUserId
+            ? or(eq(investigationsTable.userId, ownerUserId), isNull(investigationsTable.userId))
+            : undefined,
+        ),
+      )
+      .orderBy(desc(investigationsTable.createdAt));
+  }
+
+  private async attachChangeToInvestigations(input: {
+    occurredAt: Date;
+    kind: "DEPLOY" | "CHANGE" | "EBPF";
+    title: string;
+    detail: string;
+    source: string;
+    sourceRef: Record<string, unknown>;
+    changeType: "deployment" | "commit" | "config" | "terraform" | "kubernetes";
+    service?: string;
+    author?: string;
+    changeMetadata: Record<string, unknown>;
+    evidenceKind: InvestigationContext["evidence"][number]["kind"];
+    windowBeforeMs?: number;
+    windowAfterMs?: number;
+  }): Promise<{ attachedInvestigationIds: string[] }> {
+    const candidates = await this.findRecentInvestigationCandidates();
+    const attachedInvestigationIds: string[] = [];
+    const before = input.windowBeforeMs ?? 45 * 60 * 1000;
+    const after = input.windowAfterMs ?? 20 * 60 * 1000;
+
+    const attach = async (row: SelectInvestigation) => {
+      const timelineRows = await db
+        .select()
+        .from(investigationTimelineEntriesTable)
+        .where(eq(investigationTimelineEntriesTable.investigationId, row.id));
+
+      const maxSort = timelineRows.reduce((max, entry) => Math.max(max, entry.sortOrder ?? 0), 0);
+
+      await insertTimelineEntry({
+        investigationId: row.id,
+        occurredAt: input.occurredAt,
+        kind: input.kind,
+        title: input.title,
+        detail: input.detail,
+        source: input.source,
+        sourceRef: input.sourceRef,
+        sortOrder: maxSort + 1,
+        metadata: input.changeMetadata,
+      });
+
+      await persistChangeEvent({
+        investigationId: row.id,
+        type: input.changeType,
+        service: input.service ?? row.primaryService ?? row.affectedServices[0],
+        author: input.author,
+        occurredAt: input.occurredAt,
+        metadata: input.changeMetadata,
+      });
+
+      const context = (row.investigationContext as InvestigationContext | null) ?? {
+        summary: row.title,
+        evidence: [],
+        affectedServices: row.affectedServices ?? [],
+        incidentWindow: {
+          start: row.incidentWindowStart?.toISOString() ?? new Date().toISOString(),
+          end: row.incidentWindowEnd?.toISOString() ?? new Date().toISOString(),
+        },
+        signozConfigured: isSignozConfigured(),
+        notes: [],
+      };
+
+      context.evidence.push({
+        id: `${input.source}-${input.occurredAt.getTime()}`,
+        kind: input.evidenceKind,
+        title: input.title,
+        detail: input.detail,
+        occurredAt: input.occurredAt.toISOString(),
+        source: input.source,
+      });
+      context.notes = [...(context.notes ?? []), `Event correlated from ${input.source}.`];
+
+      await db
+        .update(investigationsTable)
+        .set({ investigationContext: context, updatedAt: new Date() })
+        .where(eq(investigationsTable.id, row.id));
+
+      attachedInvestigationIds.push(row.id);
+    };
+
+    for (const row of candidates) {
+      const anchor = row.incidentWindowStart?.getTime() ?? row.createdAt.getTime();
+      const eventMs = input.occurredAt.getTime();
+      if (eventMs >= anchor - before && eventMs <= anchor + after) {
+        await attach(row);
+      }
+    }
+
+    if (attachedInvestigationIds.length === 0 && candidates[0]) {
+      await attach(candidates[0]);
+    }
+
+    return { attachedInvestigationIds };
+  }
+
+  async handleKubernetesWebhook(
+    payload: KubernetesEventPayload,
+  ): Promise<{ attachedInvestigationIds: string[] }> {
+    const event = parseKubernetesEvent(payload);
+
+    return this.attachChangeToInvestigations({
+      occurredAt: event.occurredAt,
+      kind: "CHANGE",
+      title: event.title,
+      detail: event.detail,
+      source: "kubernetes-webhook",
+      sourceRef: {
+        kind: event.kind,
+        name: event.name,
+        namespace: event.namespace,
+        reason: event.reason,
+      },
+      changeType: "kubernetes",
+      service: event.service,
+      changeMetadata: {
+        kind: event.kind,
+        name: event.name,
+        namespace: event.namespace,
+        reason: event.reason,
+        revision: event.revision,
+      },
+      evidenceKind: "CHANGE",
+    });
+  }
+
+  async handleEbpfWebhook(payload: EbpfEventPayload): Promise<{ attachedInvestigationIds: string[] }> {
+    const event = parseEbpfEvent(payload);
+
+    return this.attachChangeToInvestigations({
+      occurredAt: event.occurredAt,
+      kind: "EBPF",
+      title: event.title,
+      detail: event.detail,
+      source: "ebpf-webhook",
+      sourceRef: event.metadata,
+      changeType: "config",
+      service: event.service,
+      changeMetadata: event.metadata,
+      evidenceKind: "EBPF",
+      windowBeforeMs: 60 * 60 * 1000,
+      windowAfterMs: 30 * 60 * 1000,
+    });
   }
 
   async rerunAllPipelines(): Promise<number> {

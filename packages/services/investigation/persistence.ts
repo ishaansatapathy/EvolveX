@@ -165,24 +165,40 @@ async function ensureService(name: string, healthy: boolean, latencyMs: number) 
   return created;
 }
 
-export async function seedDefaultServiceGraph(primaryService: string) {
-  const service = await ensureService(primaryService, false, 950);
-  if (!service) return;
+/** Build service graph from real SigNoz dependency API — no hardcoded edges */
+export async function buildServiceGraphFromSignoz(primaryService: string) {
+  const { fetchSignozDependencies, fetchSignozServices } = await import("../signoz/service-map");
 
-  const dependencies =
-    primaryService === "payments-svc" ? ["cart-svc", "db-cart-replica"] : [`${primaryService}-dependency`];
+  const [services, edges] = await Promise.all([
+    fetchSignozServices(),
+    fetchSignozDependencies({ service: primaryService }),
+  ]);
 
-  for (const depName of dependencies) {
-    const dep = await ensureService(depName, true, 120);
-    if (!dep) continue;
+  if (services.length === 0 && edges.length === 0) return;
+
+  const serviceMap = new Map<string, { healthy: boolean; latencyMs: number | null }>();
+  for (const svc of services) {
+    serviceMap.set(svc.name, { healthy: svc.healthy, latencyMs: svc.latencyMs });
+  }
+
+  const primaryMeta = serviceMap.get(primaryService) ?? { healthy: false, latencyMs: null };
+  await ensureService(primaryService, primaryMeta.healthy, primaryMeta.latencyMs ?? 0);
+
+  for (const edge of edges) {
+    const srcMeta = serviceMap.get(edge.source) ?? { healthy: edge.healthy, latencyMs: edge.latencyMs };
+    const dstMeta = serviceMap.get(edge.destination) ?? { healthy: edge.healthy, latencyMs: edge.latencyMs };
+
+    const source = await ensureService(edge.source, srcMeta.healthy, srcMeta.latencyMs ?? 0);
+    const dest = await ensureService(edge.destination, dstMeta.healthy, dstMeta.latencyMs ?? 0);
+    if (!source || !dest) continue;
 
     const [existingEdge] = await db
       .select({ id: serviceDependenciesTable.id })
       .from(serviceDependenciesTable)
       .where(
         and(
-          eq(serviceDependenciesTable.sourceServiceId, service.id),
-          eq(serviceDependenciesTable.destinationServiceId, dep.id),
+          eq(serviceDependenciesTable.sourceServiceId, source.id),
+          eq(serviceDependenciesTable.destinationServiceId, dest.id),
         ),
       )
       .limit(1);
@@ -190,11 +206,11 @@ export async function seedDefaultServiceGraph(primaryService: string) {
     if (existingEdge) continue;
 
     await db.insert(serviceDependenciesTable).values({
-      sourceServiceId: service.id,
-      destinationServiceId: dep.id,
-      healthy: dep.healthy,
-      latencyMs: dep.latencyMs,
-      metadata: { seeded: true },
+      sourceServiceId: source.id,
+      destinationServiceId: dest.id,
+      healthy: edge.healthy,
+      latencyMs: edge.latencyMs,
+      metadata: { source: "signoz-dependency-graph" },
     });
   }
 }

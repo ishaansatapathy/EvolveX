@@ -1,25 +1,23 @@
 import express from "express";
-import type { Request, Response } from "express";
+import type { Request } from "express";
 import { logger } from "@repo/logger";
 import InvestigationService from "@repo/services/investigation";
 import { githubPushPayloadSchema } from "@repo/services/github/webhook-parser";
+import { verifyGithubHmac } from "@repo/services/webhooks/verify";
 
 const investigationService = new InvestigationService();
 
 export const githubWebhookRouter = express.Router();
 
-function verifyGithubSecret(req: Request, res: Response): boolean {
-  const secret = process.env.GITHUB_WEBHOOK_SECRET?.trim();
-  if (!secret) return true;
-
-  const provided = req.headers["x-evolvex-github-secret"];
-  if (provided !== secret) {
-    res.status(401).json({ error: "Invalid GitHub webhook secret header" });
-    return false;
-  }
-
-  return true;
-}
+/** Preserve raw body for X-Hub-Signature-256 verification */
+githubWebhookRouter.use(
+  express.json({
+    limit: "512kb",
+    verify: (req, _res, buf) => {
+      (req as Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  }),
+);
 
 githubWebhookRouter.get("/", (_req, res) => {
   const baseUrl = process.env.BASE_URL?.trim() || "http://localhost:8000";
@@ -29,11 +27,12 @@ githubWebhookRouter.get("/", (_req, res) => {
     events: ["push"],
     webhookUrl: `${baseUrl.replace(/\/+$/, "")}/webhooks/github`,
     webhookAuthConfigured: Boolean(process.env.GITHUB_WEBHOOK_SECRET?.trim()),
+    signatureHeader: "X-Hub-Signature-256",
   });
 });
 
 githubWebhookRouter.post("/", async (req, res) => {
-  if (!verifyGithubSecret(req, res)) return;
+  if (!verifyGithubHmac(req, res)) return;
 
   const event = req.headers["x-github-event"];
   if (event !== "push") {

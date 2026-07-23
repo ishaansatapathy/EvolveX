@@ -13,6 +13,8 @@ import { createTrpcRateLimitMiddleware } from "./middleware/rate-limiters";
 import { googleAuthRouter } from "./routes/google-auth";
 import { signozWebhookRouter } from "./routes/signoz-webhook";
 import { githubWebhookRouter } from "./routes/github-webhook";
+import { kubernetesWebhookRouter } from "./routes/kubernetes-webhook";
+import { ebpfWebhookRouter } from "./routes/ebpf-webhook";
 
 export const app = express();
 
@@ -90,7 +92,9 @@ app.use(
 );
 
 app.use("/webhooks/signoz", express.json({ limit: "512kb" }), signozWebhookRouter);
-app.use("/webhooks/github", express.json({ limit: "512kb" }), githubWebhookRouter);
+app.use("/webhooks/github", githubWebhookRouter);
+app.use("/webhooks/kubernetes", express.json({ limit: "512kb" }), kubernetesWebhookRouter);
+app.use("/webhooks/ebpf", express.json({ limit: "512kb" }), ebpfWebhookRouter);
 
 app.use(requireTrustedOrigin);
 app.use(cookieParser());

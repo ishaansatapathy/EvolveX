@@ -7,40 +7,6 @@ export function needsEbpfEnrichment(context: InvestigationContext): boolean {
   return context.alertKind === "latency_percentile";
 }
 
-export function collectEbpfEvidence(context: InvestigationContext): InvestigationContext["evidence"] {
-  if (context.alertKind !== "latency_percentile") return [];
-
-  const service = context.affectedServices[0] ?? "payments-svc";
-  const now = context.incidentWindow.end ?? new Date().toISOString();
-
-  return [
-    {
-      id: "ebpf-tcp-retransmit",
-      kind: "EBPF",
-      title: "TCP retransmit rate elevated (kernel)",
-      detail: `${service}: retransmit counter rose in the incident window — often precedes tail latency while averages stay flat.`,
-      occurredAt: now,
-      source: "ebpf-enricher",
-    },
-    {
-      id: "ebpf-connect-latency",
-      kind: "EBPF",
-      title: "connect() latency spike (kernel socket layer)",
-      detail: "Outbound connection setup slowed before application spans — consistent with pool exhaustion or dependency timeouts.",
-      occurredAt: now,
-      source: "ebpf-enricher",
-    },
-    {
-      id: "ebpf-pool-pressure",
-      kind: "EBPF",
-      title: "Database connection pool pressure",
-      detail: "Waiting threads detected on pool acquire — matches slow tail requests affecting p95/p99, not the median.",
-      occurredAt: now,
-      source: "ebpf-enricher",
-    },
-  ];
-}
-
 export function signozAlertToMetricEvidence(
   alert: SignozAlert,
   classification: AlertClassification,
