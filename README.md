@@ -10,6 +10,8 @@ SigNoz / GitHub / K8s / eBPF  →  Evolvex API  →  PostgreSQL  →  React UI
 
 See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full production design and zero-fake-data policy.
 
+For **OpenTelemetry eBPF Instrumentation (OBI)** setup, see [docs/EBPF-OBI.md](./docs/EBPF-OBI.md).
+
 ## Prerequisites
 
 - Node.js 20+
@@ -48,7 +50,7 @@ pnpm dev
 | `POST /webhooks/signoz` | SigNoz alerts |
 | `POST /webhooks/github` | GitHub push (HMAC verified) |
 | `POST /webhooks/kubernetes` | K8s event exporter |
-| `POST /webhooks/ebpf` | Cilium Hubble / Pixie / custom agent |
+| `POST /webhooks/ebpf` | Cilium Hubble / Pixie / OBI bridge / custom agent |
 
 ## Telemetry (dogfooding)
 
@@ -60,6 +62,8 @@ When `SIGNOZ_INGESTION_KEY` is set, the API auto-instruments with OpenTelemetry 
 pnpm signoz:loadgen   # Send real traces to SigNoz
 pnpm signoz:p99       # Tail latency load for p99 alerts
 pnpm investigation:seed  # Seed a real investigation via webhook handler
+pnpm obi:up             # OBI eBPF demo (Docker Linux only) → SigNoz OTLP
+pnpm obi:bridge         # Poll OBI metrics in SigNoz → Evolvex eBPF webhook
 pnpm db:seed          # Seed auth demo user
 ```
 

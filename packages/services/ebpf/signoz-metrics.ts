@@ -2,8 +2,9 @@ import { logger } from "@repo/logger";
 
 import { getSignozConfig, isSignozConfigured } from "../signoz-env";
 import type { InvestigationContext } from "../investigation/types";
+import { OBI_METRIC_CANDIDATES, obiMetricToEvidence } from "./obi-metrics";
 
-type MetricSample = {
+export type MetricSample = {
   metricName: string;
   value: number;
   timestamp: string;
@@ -22,7 +23,7 @@ type QueryRangeResponse = {
 };
 
 /** Kernel/network metrics commonly exported via eBPF collectors into SigNoz/Prometheus */
-const EBPF_METRIC_CANDIDATES = [
+const EBPF_METRIC_CANDINATES = [
   "signoz_tcp_retransmits_total",
   "tcp_retransmits_total",
   "node_netstat_Tcp_RetransSegs",
@@ -30,13 +31,14 @@ const EBPF_METRIC_CANDIDATES = [
   "signoz_connection_latency_seconds",
   "ebpf_connect_latency_seconds",
   "process_runtime_go_goroutines",
+  ...OBI_METRIC_CANDIDATES,
 ] as const;
 
 function normalizeBaseUrl(url: string) {
   return url.replace(/\/+$/, "");
 }
 
-async function queryMetricRange(input: {
+export async function querySignozMetricRange(input: {
   metricName: string;
   serviceName?: string;
   startMs: number;
@@ -115,6 +117,9 @@ function metricToEvidence(
   sample: MetricSample,
   service: string,
 ): InvestigationContext["evidence"][number] | null {
+  const obiEvidence = obiMetricToEvidence(sample, service);
+  if (obiEvidence) return obiEvidence;
+
   const name = sample.metricName.toLowerCase();
 
   if (name.includes("retransmit")) {
@@ -153,7 +158,7 @@ function metricToEvidence(
   return null;
 }
 
-/** Query SigNoz metrics API for real kernel/network signals. Returns empty if none configured. */
+/** Query SigNoz metrics API for real kernel/network/OBI signals. Returns empty if none configured. */
 export async function enrichEbpfFromSignozMetrics(input: {
   service: string;
   startMs: number;
@@ -163,8 +168,8 @@ export async function enrichEbpfFromSignozMetrics(input: {
 
   const evidence: InvestigationContext["evidence"] = [];
 
-  for (const metricName of EBPF_METRIC_CANDIDATES) {
-    const samples = await queryMetricRange({
+  for (const metricName of EBPF_METRIC_CANDINATES) {
+    const samples = await querySignozMetricRange({
       metricName,
       serviceName: input.service,
       startMs: input.startMs,

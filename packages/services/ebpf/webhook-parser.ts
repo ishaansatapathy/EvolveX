@@ -20,6 +20,8 @@ export const ebpfEventSchema = z.object({
   message: z.string().optional(),
   timestamp: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  /** Source collector — e.g. obi, hubble, pixie */
+  source: z.enum(["obi", "hubble", "pixie", "custom"]).optional(),
 });
 
 export type EbpfEventPayload = z.infer<typeof ebpfEventSchema>;
@@ -48,7 +50,7 @@ export function parseEbpfEvent(payload: EbpfEventPayload) {
   return {
     service,
     type: payload.type,
-    title,
+    title: payload.source === "obi" ? `${title} (OBI)` : title,
     detail,
     occurredAt: payload.timestamp ? new Date(payload.timestamp) : new Date(),
     metadata: {
@@ -57,6 +59,7 @@ export function parseEbpfEvent(payload: EbpfEventPayload) {
       metric: payload.metric,
       value: payload.value,
       unit: payload.unit,
+      collector: payload.source ?? "webhook",
       ...(payload.metadata ?? {}),
     },
   };

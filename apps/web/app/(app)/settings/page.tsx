@@ -146,8 +146,12 @@ export default function SettingsPage() {
             Webhook URL: {status?.ebpfWebhookUrl ?? "—"}
           </p>
           <p className="evx-dash__stat-note">
-            Real paths: Cilium Hubble / Pixie / custom agent webhook, or SigNoz metrics API during investigation
-            enrichment. No synthetic kernel evidence is generated.
+            Real paths: OpenTelemetry eBPF Instrumentation (OBI) → SigNoz OTLP, Cilium Hubble / Pixie webhook,
+            or <code style={{ fontSize: "0.65rem" }}>pnpm obi:bridge</code> anomaly bridge. No synthetic kernel
+            evidence is generated.
+          </p>
+          <p className="evx-dash__stat-note" style={{ marginTop: "0.35rem" }}>
+            OBI demo: <code style={{ fontSize: "0.65rem" }}>pnpm obi:up</code> (Docker Linux). See docs/EBPF-OBI.md.
           </p>
           <div className="evx-dash__cause-actions" style={{ marginTop: "0.9rem" }}>
             {status?.ebpfWebhookUrl ? (

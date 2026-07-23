@@ -1,0 +1,33 @@
+# OBI (OpenTelemetry eBPF Instrumentation) sidecar for local demos.
+# Requires Docker Desktop with Linux containers (WSL2). OBI does not run on native Windows.
+#
+# Flow: goblog (demo HTTP app) → OBI (eBPF zero-code) → OTLP → SigNoz → Evolvex investigation pipeline
+#
+# Usage:
+#   cp .env.example .env   # ensure SIGNOZ_INGESTION_URL + SIGNOZ_INGESTION_KEY are set
+#   docker compose -f docker-compose.obi.yml up
+#
+# Then run Evolvex API and optionally:
+#   pnpm obi:bridge -- --service goblog --once
+
+services:
+  goblog:
+    image: mariomac/goblog:dev
+    container_name: evolvex-obi-goblog
+    ports:
+      - "18443:8443"
+
+  obi:
+    image: otel/ebpf-instrument:v0.10.0
+    container_name: evolvex-obi-agent
+    pid: host
+    privileged: true
+    depends_on:
+      - goblog
+    environment:
+      OTEL_EBPF_OPEN_PORT: "8443"
+      OTEL_EBPF_METRICS_FEATURES: network,application
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${SIGNOZ_INGESTION_URL:-https://ingest.in2.signoz.cloud}
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_HEADERS: signoz-ingestion-key=${SIGNOZ_INGESTION_KEY}
+      OTEL_RESOURCE_ATTRIBUTES: service.name=goblog,deployment.environment=evolvex-demo

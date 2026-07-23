@@ -86,8 +86,10 @@ Supported event types: `Deployment`, `Pod`, `ReplicaSet`, `HorizontalPodAutoscal
 
 Two real paths (both supported):
 
-1. **SigNoz metrics** — if your cluster sends eBPF/network metrics to SigNoz (TCP retransmits, connection latency), Evolvex queries them via the metrics API during investigation enrichment.
-2. **Direct webhook** — Cilium Hubble, Pixie, or custom eBPF collector POSTs structured events to `/webhooks/ebpf`.
+1. **SigNoz metrics** — if your cluster sends eBPF/network metrics to SigNoz (TCP retransmits, connection latency, **OBI** `obi_stat_*` metrics), Evolvex queries them via the metrics API during investigation enrichment.
+2. **Direct webhook** — Cilium Hubble, Pixie, **OBI anomaly bridge** (`pnpm obi:bridge`), or custom eBPF collector POSTs structured events to `/webhooks/ebpf`.
+
+**OpenTelemetry eBPF Instrumentation (OBI):** run OBI on Linux → OTLP export to SigNoz → Evolvex reads real kernel/network metrics. See [EBPF-OBI.md](./EBPF-OBI.md).
 
 No synthetic kernel evidence is ever generated.
 
