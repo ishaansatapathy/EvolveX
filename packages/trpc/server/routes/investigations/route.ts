@@ -1,6 +1,7 @@
 import {
   investigationDetailSchema,
   investigationListItemSchema,
+  investigationNoteSchema,
   investigationOsContextSchema,
   timelineEntrySchema,
 } from "@repo/services/investigation/types";
@@ -176,6 +177,67 @@ export const investigationsRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
         }
         return result;
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  notes: protectedProcedure
+    .input(z.object({ investigationId: z.string().uuid() }))
+    .output(z.array(investigationNoteSchema))
+    .query(async ({ ctx, input }) => {
+      try {
+        const notes = await investigationService.listNotes(input.investigationId, ctx.user.id);
+        if (!notes) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+        }
+        return notes;
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  createNote: protectedProcedure
+    .input(z.object({ investigationId: z.string().uuid(), body: z.string().min(1).max(4000) }))
+    .output(investigationNoteSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const note = await investigationService.createNote(
+          input.investigationId,
+          ctx.user.id,
+          input.body,
+        );
+        if (!note) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+        }
+        return note;
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  regenerateSummary: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .output(
+      z.object({
+        markdown: z.string(),
+        generatedAt: z.string(),
+      }).nullable(),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await investigationService.regenerateSummary(input.id, ctx.user.id);
+        if (result === null) {
+          const context = await investigationService.getOsContext(input.id, ctx.user.id);
+          if (!context) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+          }
+          return null;
+        }
+        return {
+          markdown: result.markdown,
+          generatedAt: result.generatedAt.toISOString(),
+        };
       } catch (error) {
         mapServiceError(error);
       }

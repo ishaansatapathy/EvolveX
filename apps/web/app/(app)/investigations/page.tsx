@@ -63,6 +63,26 @@ export default function InvestigationsPage() {
     },
   );
 
+  const notesQuery = trpc.investigations.notes.useQuery(
+    { investigationId: activeId ?? "" },
+    { enabled: Boolean(activeId) },
+  );
+
+  const createNoteMutation = trpc.investigations.createNote.useMutation({
+    onSuccess: () => {
+      void notesQuery.refetch();
+      setNoteDraft("");
+    },
+  });
+
+  const regenerateSummaryMutation = trpc.investigations.regenerateSummary.useMutation({
+    onSuccess: () => {
+      void contextQuery.refetch();
+    },
+  });
+
+  const [noteDraft, setNoteDraft] = useState("");
+
   const osContext = contextQuery.data;
   const timeline = osContext?.timeline ?? [];
   const primaryService =
@@ -190,6 +210,86 @@ export default function InvestigationsPage() {
                 </div>
               </div>
 
+              {osContext.llmSummary ? (
+                <section className="evx-dash__cause" style={{ transform: "rotate(0.4deg)" }}>
+                  <p className="evx-dash__cause-kicker">✦ AI ROOT CAUSE · OPENAI</p>
+                  <div
+                    className="evx-dash__cause-text"
+                    style={{ whiteSpace: "pre-wrap" }}
+                  >
+                    {osContext.llmSummary.markdown}
+                  </div>
+                  <p className="evx-dash__stat-note" style={{ marginTop: "0.5rem", color: "rgba(17,17,17,0.55)" }}>
+                    Generated {formatRelativeTime(osContext.llmSummary.generatedAt)}
+                  </p>
+                </section>
+              ) : osContext.investigation.status === "ready" ? (
+                <section className="evx-dash__context-card">
+                  <p className="evx-dash__context-card-title">AI SUMMARY</p>
+                  <p className="evx-dash__stat-note">
+                    No LLM summary yet. Configure OPENAI_API_KEY and regenerate from collected evidence.
+                  </p>
+                  <button
+                    type="button"
+                    className="evx-dash__btn-primary"
+                    style={{ marginTop: "0.6rem" }}
+                    disabled={regenerateSummaryMutation.isPending}
+                    onClick={() => activeId && regenerateSummaryMutation.mutate({ id: activeId })}
+                  >
+                    {regenerateSummaryMutation.isPending ? "Generating…" : "Generate summary →"}
+                  </button>
+                </section>
+              ) : null}
+
+              {osContext.investigation.status === "ready" && osContext.llmSummary ? (
+                <button
+                  type="button"
+                  className="evx-dash__btn-ghost"
+                  style={{ width: "fit-content", color: "var(--evx-paper)", borderColor: "rgba(240,240,235,0.35)" }}
+                  disabled={regenerateSummaryMutation.isPending}
+                  onClick={() => activeId && regenerateSummaryMutation.mutate({ id: activeId })}
+                >
+                  Regenerate AI summary
+                </button>
+              ) : null}
+
+              <section className="evx-dash__context-card">
+                <p className="evx-dash__context-card-title">ENGINEER NOTES</p>
+                {notesQuery.data?.length ? (
+                  <div className="evx-dash__table" style={{ marginBottom: "0.75rem" }}>
+                    {notesQuery.data.map((note) => (
+                      <div key={note.id} className="evx-dash__row" style={{ gridTemplateColumns: "1fr 72px" }}>
+                        <span className="evx-dash__event-text">{note.body}</span>
+                        <span className="evx-dash__event-at">{formatRelativeTime(note.createdAt)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="evx-dash__stat-note" style={{ marginBottom: "0.75rem" }}>
+                    No notes yet. Add context for your team.
+                  </p>
+                )}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!activeId || !noteDraft.trim()) return;
+                    createNoteMutation.mutate({ investigationId: activeId, body: noteDraft.trim() });
+                  }}
+                  className="evx-dash__toolbar"
+                >
+                  <input
+                    className="evx-dash__input"
+                    style={{ flex: 1 }}
+                    placeholder="Looks related to Redis pool…"
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                  />
+                  <button type="submit" className="evx-dash__btn-primary" disabled={createNoteMutation.isPending}>
+                    Add note
+                  </button>
+                </form>
+              </section>
+
               <div className="evx-dash__timeline" ref={timelineRef}>
                 <p className="evx-dash__timeline-label">EVIDENCE TIMELINE · POSTGRES</p>
                 {timeline.length === 0 ? (
@@ -230,7 +330,7 @@ export default function InvestigationsPage() {
                 </section>
 
                 <section className="evx-dash__context-card">
-                  <p className="evx-dash__context-card-title">CHANGE EVENTS · GITHUB</p>
+                  <p className="evx-dash__context-card-title">CHANGE EVENTS · GITHUB / K8S</p>
                   {osContext.changeEvents.length === 0 ? (
                     <p className="evx-dash__stat-note">No deploy/commit events correlated yet.</p>
                   ) : (

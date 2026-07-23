@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: evolvex
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/evolvex
+      JWT_SECRET: test-jwt-secret-min-32-chars-long!!
+      JWT_REFRESH_SECRET: test-refresh-secret-min-32-chars!!
+      BASE_URL: http://localhost:8000
+      CLIENT_URL: http://localhost:3000
+      SKIP_ENV_VALIDATION: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm db:migrate
+
+      - run: pnpm check-types
+
+      - run: pnpm lint
+
+      - run: pnpm --filter @repo/services test
+
+      - run: pnpm --filter @repo/api test
+
+      - run: pnpm build

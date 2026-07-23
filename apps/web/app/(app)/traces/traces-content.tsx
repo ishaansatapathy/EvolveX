@@ -5,54 +5,75 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { AppPageHeader } from "~/components/evolvex/app-shell";
-import { TRACES } from "~/lib/evolvex-demo-data";
 import { trpc } from "~/trpc/client";
 
 function isUuid(value: string | null) {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 }
 
+function traceStatus(durationMs: number, hasError?: boolean) {
+  if (hasError) return "error" as const;
+  if (durationMs >= 800) return "slow" as const;
+  return "ok" as const;
+}
+
 export default function TracesPageContent() {
   const searchParams = useSearchParams();
   const investigationId = searchParams.get("investigation");
   const serviceFilter = searchParams.get("service") ?? "";
-  const useLiveData = isUuid(investigationId);
 
   const [status, setStatus] = useState<"ALL" | "error" | "slow" | "ok">("ALL");
 
-  const liveQuery = trpc.investigations.traces.useQuery(
+  const signozStatus = trpc.telemetry.status.useQuery();
+  const useCaseScope = isUuid(investigationId);
+
+  const caseQuery = trpc.investigations.traces.useQuery(
     { id: investigationId ?? "" },
-    { enabled: useLiveData },
+    { enabled: useCaseScope },
   );
 
-  const filtered = useMemo(() => {
-    if (useLiveData) {
-      return (liveQuery.data?.traces ?? [])
-        .map((trace, index) => {
-          const durationMs = trace.durationMs ?? 0;
-          const traceStatus = trace.hasError ? "error" : durationMs >= 800 ? "slow" : "ok";
-          return {
-            id: trace.traceId ?? trace.spanId ?? String(index),
-            name: trace.name ?? "span",
-            service: trace.serviceName ?? liveQuery.data?.service ?? serviceFilter,
-            durationMs,
-            status: traceStatus as "error" | "slow" | "ok",
-          };
-        })
-        .filter((trace) => status === "ALL" || trace.status === status);
-    }
+  const liveQuery = trpc.telemetry.traces.useQuery(
+    { serviceName: serviceFilter || undefined, range: "15m", limit: 50 },
+    {
+      enabled: signozStatus.data?.configured === true && !useCaseScope,
+      refetchInterval: 5000,
+    },
+  );
 
-    return TRACES.filter((trace) => {
-      if (serviceFilter && trace.service !== serviceFilter) return false;
-      if (status !== "ALL" && trace.status !== status) return false;
-      return true;
-    });
-  }, [useLiveData, liveQuery.data, serviceFilter, status]);
+  const activeQuery = useCaseScope ? caseQuery : liveQuery;
+
+  const filtered = useMemo(() => {
+    const rows = useCaseScope
+      ? (caseQuery.data?.traces ?? [])
+      : (liveQuery.data?.traces ?? []);
+
+    return rows
+      .map((trace, index) => {
+        const durationMs = trace.durationMs ?? 0;
+        const rowStatus = traceStatus(durationMs, trace.hasError);
+        return {
+          id: trace.traceId ?? trace.spanId ?? String(index),
+          name: trace.name ?? "span",
+          service:
+            trace.serviceName ??
+            caseQuery.data?.service ??
+            serviceFilter ??
+            "unknown",
+          durationMs,
+          status: rowStatus,
+          timestamp: trace.timestamp,
+        };
+      })
+      .filter((trace) => status === "ALL" || trace.status === status);
+  }, [useCaseScope, caseQuery.data, liveQuery.data, serviceFilter, status]);
 
   return (
     <>
       <AppPageHeader kicker="⊙ DISTRIBUTED TRACES" title="Traces">
-        {investigationId ? <span className="evx-dash__chip">Case linked</span> : null}
+        {useCaseScope ? <span className="evx-dash__chip">Case linked</span> : null}
+        {!useCaseScope && signozStatus.data?.configured ? (
+          <span className="evx-dash__chip">Live · 15m · refreshes 5s</span>
+        ) : null}
       </AppPageHeader>
 
       <div className="evx-dash__toolbar">
@@ -62,10 +83,9 @@ export default function TracesPageContent() {
           <option value="slow">Slow</option>
           <option value="ok">OK</option>
         </select>
-        {(serviceFilter || liveQuery.data?.service) ? (
-          <span className="evx-dash__chip">{liveQuery.data?.service ?? serviceFilter}</span>
+        {serviceFilter || caseQuery.data?.service ? (
+          <span className="evx-dash__chip">{caseQuery.data?.service ?? serviceFilter}</span>
         ) : null}
-        {useLiveData ? <span className="evx-dash__chip">SigNoz window</span> : null}
         {investigationId ? (
           <Link href={`/logs?investigation=${investigationId}&service=${serviceFilter}`} className="evx-dash__chip">
             Open related logs →
@@ -74,7 +94,13 @@ export default function TracesPageContent() {
       </div>
 
       <div className="evx-dash__table">
-        {liveQuery.isLoading ? (
+        {signozStatus.isLoading ? (
+          <p className="evx-dash__empty">Checking SigNoz connection…</p>
+        ) : !signozStatus.data?.configured ? (
+          <p className="evx-dash__empty">
+            SigNoz is not configured. Add SIGNOZ_CLOUD_URL and SIGNOZ_API_KEY in Settings to load live traces.
+          </p>
+        ) : activeQuery.isLoading ? (
           <p className="evx-dash__empty">Loading traces from SigNoz…</p>
         ) : filtered.length ? (
           filtered.map((trace) => (
@@ -91,7 +117,9 @@ export default function TracesPageContent() {
           ))
         ) : (
           <p className="evx-dash__empty">
-            {useLiveData ? "No traces in this investigation window from SigNoz." : "No traces match your filters."}
+            {useCaseScope
+              ? "No traces in this investigation window from SigNoz."
+              : "No traces in the last 15 minutes. Use the app or run pnpm signoz:loadgen to generate telemetry."}
           </p>
         )}
       </div>

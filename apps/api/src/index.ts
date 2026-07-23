@@ -1,5 +1,9 @@
 import http from "node:http";
 
+import { registerApiOtel } from "./register-otel";
+
+registerApiOtel();
+
 import { runApiBootstrap } from "./api-bootstrap";
 
 const PORT = Number(process.env.PORT ?? 8000);

@@ -120,6 +120,15 @@ export const investigationOsContextSchema = z.object({
     .nullable(),
 });
 
+export const investigationNoteSchema = z.object({
+  id: z.string().uuid(),
+  body: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string().nullable(),
+});
+
+export type InvestigationNoteDto = z.infer<typeof investigationNoteSchema>;
+
 export const investigationDetailSchema = investigationListItemSchema.extend({
   incidentId: z.string().nullable().optional(),
   primaryService: z.string().nullable().optional(),

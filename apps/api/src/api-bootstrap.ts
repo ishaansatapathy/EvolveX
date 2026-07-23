@@ -9,6 +9,25 @@ export type ApiBootstrapOptions = {
 };
 
 export async function runApiBootstrap(_opts: ApiBootstrapOptions = {}): Promise<void> {
+  const missing = validateApiEnv();
+  if (missing.length > 0) {
+    logger.warn(`Missing recommended env vars: ${missing.join(", ")}`);
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    const requiredInProd = [
+      "DATABASE_URL",
+      "JWT_SECRET",
+      "JWT_REFRESH_SECRET",
+      "SIGNOZ_WEBHOOK_SECRET",
+      "GITHUB_WEBHOOK_SECRET",
+    ].filter((key) => !process.env[key]?.trim());
+
+    if (requiredInProd.length > 0) {
+      throw new Error(`Production startup blocked — missing: ${requiredInProd.join(", ")}`);
+    }
+  }
+
   try {
     await runMigrations();
     logger.info("Database schema patches applied");

@@ -3,6 +3,7 @@ import { db } from "@repo/database";
 import {
   changeEventsTable,
   evidenceTable,
+  investigationNotesTable,
   investigationSummariesTable,
   investigationTimelineEntriesTable,
   investigationsTable,
@@ -16,7 +17,6 @@ import { logger } from "@repo/logger";
 
 import { isSignozConfigured, getDefaultServiceName } from "../signoz-env";
 import { signozClient } from "../signoz/client";
-import { buildDemoErrorTraces, buildDemoSlowTraces, isDemoTracesEnabled } from "../signoz/demo-traces";
 import type { SignozAlert, SignozTraceRow, SignozWebhookPayload } from "../signoz/types";
 import {
   buildInvestigationTitle,
@@ -37,6 +37,7 @@ import { parseEbpfEvent, type EbpfEventPayload } from "../ebpf/webhook-parser";
 import { parseGithubDeployEvent, type GithubPushPayload } from "../github/webhook-parser";
 import { parseKubernetesEvent, type KubernetesEventPayload } from "../kubernetes/webhook-parser";
 import { resolveInvestigationOwnerUserId } from "./owner";
+import { generateAndPersistInvestigationSummary } from "./llm-summary";
 import {
   buildPersistedSummary,
   buildServiceGraphFromSignoz,
@@ -438,7 +439,6 @@ class InvestigationService {
       const storedAlert = alertFromStoredPayload(row);
       const classification = classifyInvestigationAlert(storedAlert);
       const isLatencyIncident = classification.kind === "latency_percentile";
-      let usedDemoFallback = false;
 
       let traces: SignozTraceRow[] = [];
       if (signozConfigured) {
@@ -455,13 +455,6 @@ class InvestigationService {
               endMs,
               limit: 10,
             });
-      }
-
-      if (traces.length === 0 && isDemoTracesEnabled()) {
-        traces = isLatencyIncident
-          ? buildDemoSlowTraces(service ?? "payments-svc")
-          : buildDemoErrorTraces(service ?? "payments-svc");
-        usedDemoFallback = true;
       }
 
       await db
@@ -566,13 +559,7 @@ class InvestigationService {
         signozConfigured,
         alertKind: classification.kind,
         latencyPercentile: classification.percentile,
-        notes: usedDemoFallback
-          ? [
-              isLatencyIncident
-                ? "Demo slow-trace evidence seeded locally. SigNoz computes p95/p99 — Evolvex only investigates the alert."
-                : "Demo trace evidence seeded locally (development only — use pnpm signoz:loadgen in production).",
-            ]
-          : [],
+        notes: [],
       };
 
       if (needsEbpfEnrichment(context)) {
@@ -611,6 +598,43 @@ class InvestigationService {
       await buildServiceGraphFromSignoz(service);
 
       const summaryText = buildPersistedSummary(context);
+
+      const [timelineRows, changeRows, runtimeCount] = await Promise.all([
+        db
+          .select()
+          .from(investigationTimelineEntriesTable)
+          .where(eq(investigationTimelineEntriesTable.investigationId, investigationId))
+          .orderBy(asc(investigationTimelineEntriesTable.sortOrder)),
+        db
+          .select()
+          .from(changeEventsTable)
+          .where(eq(changeEventsTable.investigationId, investigationId)),
+        db
+          .select({ id: runtimeSignalsTable.id })
+          .from(runtimeSignalsTable)
+          .where(eq(runtimeSignalsTable.investigationId, investigationId)),
+      ]);
+
+      await generateAndPersistInvestigationSummary({
+        investigationId,
+        title: row.title,
+        summary: summaryText,
+        affectedServices: row.affectedServices,
+        timeline: timelineRows.map((entry) => ({
+          kind: entry.kind,
+          title: entry.title,
+          detail: entry.detail,
+          occurredAt: entry.occurredAt.toISOString(),
+          source: entry.source,
+        })),
+        changeEvents: changeRows.map((event) => ({
+          type: event.type,
+          service: event.service,
+          author: event.author,
+          occurredAt: event.occurredAt.toISOString(),
+        })),
+        runtimeSignalCount: runtimeCount.length,
+      });
 
       await db
         .update(investigationsTable)
@@ -902,6 +926,104 @@ class InvestigationService {
       evidenceKind: "EBPF",
       windowBeforeMs: 60 * 60 * 1000,
       windowAfterMs: 30 * 60 * 1000,
+    });
+  }
+
+  async listNotes(investigationId: string, userId: string) {
+    const [row] = await db
+      .select({ id: investigationsTable.id })
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row) return null;
+
+    const [investigation] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!investigation || !canAccessInvestigation(investigation, userId)) return null;
+
+    const notes = await db
+      .select()
+      .from(investigationNotesTable)
+      .where(eq(investigationNotesTable.investigationId, investigationId))
+      .orderBy(asc(investigationNotesTable.createdAt));
+
+    return notes.map((note) => ({
+      id: note.id,
+      body: note.body,
+      createdAt: note.createdAt.toISOString(),
+      updatedAt: note.updatedAt?.toISOString() ?? null,
+    }));
+  }
+
+  async createNote(investigationId: string, userId: string, body: string) {
+    const trimmed = body.trim();
+    if (!trimmed) {
+      throw new Error("Note body is required");
+    }
+
+    const [investigation] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!investigation || !canAccessInvestigation(investigation, userId)) return null;
+
+    const [created] = await db
+      .insert(investigationNotesTable)
+      .values({
+        investigationId,
+        userId,
+        body: trimmed,
+      })
+      .returning();
+
+    if (!created) return null;
+
+    return {
+      id: created.id,
+      body: created.body,
+      createdAt: created.createdAt.toISOString(),
+      updatedAt: created.updatedAt?.toISOString() ?? null,
+    };
+  }
+
+  async regenerateSummary(investigationId: string, userId: string) {
+    const context = await this.getOsContext(investigationId, userId);
+    if (!context) return null;
+
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row) return null;
+
+    return generateAndPersistInvestigationSummary({
+      investigationId,
+      title: row.title,
+      summary: row.summary ?? context.investigation.summary ?? row.title,
+      affectedServices: row.affectedServices,
+      timeline: context.timeline.map((entry) => ({
+        kind: entry.kind,
+        title: entry.title,
+        detail: entry.detail,
+        occurredAt: entry.occurredAt,
+        source: entry.source,
+      })),
+      changeEvents: context.changeEvents.map((event) => ({
+        type: event.type,
+        service: event.service,
+        author: event.author,
+        occurredAt: event.occurredAt,
+      })),
+      runtimeSignalCount: context.runtimeSignals.length,
     });
   }
 
