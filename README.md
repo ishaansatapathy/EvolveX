@@ -54,10 +54,6 @@ pnpm dev
 
 When `SIGNOZ_INGESTION_KEY` is set, the API auto-instruments with OpenTelemetry as service `evolvex-api`. Visitor traffic appears in **Traces** and **Logs** pages (live SigNoz queries, no mock data).
 
-## Demo login
-
-Set `DEMO_LOGIN_ENABLED=true` and seed credentials in `.env` for judge access.
-
 ## Scripts
 
 ```bash

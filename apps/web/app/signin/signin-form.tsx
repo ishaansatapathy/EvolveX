@@ -58,13 +58,11 @@ export default function SignInForm() {
   const signInMutation = trpc.auth.signIn.useMutation();
   const signUpMutation = trpc.auth.signUp.useMutation();
   const verify2FAMutation = trpc.auth.verify2FA.useMutation();
-  const demoSignInMutation = trpc.auth.demoSignIn.useMutation();
 
   const loading =
     signInMutation.isPending ||
     signUpMutation.isPending ||
-    verify2FAMutation.isPending ||
-    demoSignInMutation.isPending;
+    verify2FAMutation.isPending;
 
   useEffect(() => {
     const urlError = searchParams.get("error");
@@ -156,21 +154,6 @@ export default function SignInForm() {
     window.location.href = `/api-auth/google?state=${encodeURIComponent("/dashboard")}`;
   }
 
-  async function handleDemoLogin() {
-    setError("");
-    try {
-      const result = await demoSignInMutation.mutateAsync({});
-      if (result.twoFactorRequired) {
-        setTwoFactorEmail(result.email);
-        setSuccess(result.message);
-        return;
-      }
-      await finishLogin();
-    } catch (err) {
-      setError(trpcMessage(err));
-    }
-  }
-
   return (
     <main className="evx-auth">
       <img src="/images/landing-background.png" alt="" aria-hidden className="evx-auth__bg" />
@@ -212,24 +195,6 @@ export default function SignInForm() {
             <GoogleIcon />
             Continue with Google
           </button>
-        ) : null}
-
-        {!twoFactorEmail ? (
-          <>
-            <button
-              type="button"
-              suppressHydrationWarning
-              className="evx-auth__google"
-              onClick={handleDemoLogin}
-              disabled={loading}
-              style={{ marginTop: "0.5rem", opacity: 0.92 }}
-            >
-              Demo login (judges)
-            </button>
-            <p className="evx-auth__switch" style={{ marginTop: "0.35rem", fontSize: "0.68rem" }}>
-              Requires DEMO_LOGIN_ENABLED on the API.
-            </p>
-          </>
         ) : null}
 
         {!twoFactorEmail ? (

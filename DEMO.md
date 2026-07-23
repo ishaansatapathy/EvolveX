@@ -14,7 +14,7 @@
 
 > "SigNoz tells you something broke. Evolvex tells you **why** — by correlating alerts, traces, deploys, and kernel signals into one investigation."
 
-Open live URL → **Demo login** or Google sign-in.
+Open live URL → **Sign in with Google** or email/password.
 
 ### 2. Trigger incident (60s)
 

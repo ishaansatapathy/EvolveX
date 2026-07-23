@@ -245,7 +245,7 @@ export default function InvestigationsPage() {
                 <button
                   type="button"
                   className="evx-dash__btn-ghost"
-                  style={{ width: "fit-content", color: "var(--evx-paper)", borderColor: "rgba(240,240,235,0.35)" }}
+                  style={{ width: "fit-content" }}
                   disabled={regenerateSummaryMutation.isPending}
                   onClick={() => activeId && regenerateSummaryMutation.mutate({ id: activeId })}
                 >

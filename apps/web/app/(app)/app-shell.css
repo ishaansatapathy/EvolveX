@@ -549,22 +549,36 @@
   font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
   font-size: 0.66rem;
   font-weight: 600;
-  color: #111;
+  color: var(--evx-paper);
   background: transparent;
-  border: 2px solid #111;
+  border: 2px solid rgba(240, 240, 235, 0.45);
   border-radius: 4px;
   cursor: pointer;
   transition:
     background 0.18s ease,
     color 0.18s ease,
+    border-color 0.18s ease,
     transform 0.25s var(--evx-bounce);
   text-decoration: none;
 }
 
 .evx-dash__btn-ghost:hover {
+  background: var(--evx-yellow);
+  color: #111;
+  border-color: var(--evx-yellow);
+  transform: translateX(3px);
+}
+
+/* Paper cards (investigation context) — dark ghost on light surface */
+.evx-dash__cause .evx-dash__btn-ghost {
+  color: #111;
+  border-color: #111;
+}
+
+.evx-dash__cause .evx-dash__btn-ghost:hover {
   background: #111;
   color: var(--evx-paper);
-  transform: translateX(3px);
+  border-color: #111;
 }
 
 /* ── Timeline ────────────────────────────────────────── */
@@ -1021,6 +1035,29 @@
 }
 
 .evx-dash__detail .evx-dash__btn-ghost:hover {
-  background: var(--evx-paper);
+  background: var(--evx-yellow);
   color: #111;
+  border-color: var(--evx-yellow);
+}
+
+/* Dark dashboard surfaces — settings cards, toolbars, sign-out row */
+.evx-dash__settings-card .evx-dash__btn-ghost,
+.evx-dash__toolbar .evx-dash__btn-ghost {
+  color: var(--evx-paper);
+  border-color: rgba(240, 240, 235, 0.55);
+}
+
+.evx-dash__settings-card .evx-dash__btn-ghost:hover,
+.evx-dash__settings-card .evx-dash__btn-ghost:focus-visible,
+.evx-dash__toolbar .evx-dash__btn-ghost:hover,
+.evx-dash__toolbar .evx-dash__btn-ghost:focus-visible {
+  background: var(--evx-yellow);
+  color: #111;
+  border-color: var(--evx-yellow);
+}
+
+.evx-dash__btn-ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }

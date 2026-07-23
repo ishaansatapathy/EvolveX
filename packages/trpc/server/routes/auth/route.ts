@@ -29,17 +29,6 @@ import { generatePath } from "../../utils/path-generator";
 const TAGS = ["Authentication"];
 const getPath = generatePath("/authentication");
 
-function isDemoLoginEnabled() {
-  return process.env.DEMO_LOGIN_ENABLED === "true";
-}
-
-function getDemoCredentials() {
-  return {
-    email: process.env.DEMO_USER_EMAIL ?? process.env.SEED_USER_EMAIL ?? "demo@evolvex.dev",
-    password: process.env.DEMO_USER_PASSWORD ?? process.env.SEED_DEMO_PASSWORD ?? "DemoPass123!",
-  };
-}
-
 export const authRouter = router({
   getSupportedAuthenticationProviders: publicProcedure
     .meta({ openapi: { method: "GET", path: getPath("/supported-providers"), tags: TAGS } })
@@ -75,23 +64,6 @@ export const authRouter = router({
         const { turnstileToken, ...signInInput } = input;
         void turnstileToken;
         return await authService.signIn(signInInput, ctx.res);
-      } catch (error) {
-        mapAuthError(error);
-      }
-    }),
-
-  /** One-click demo login — skips Turnstile; gated by DEMO_LOGIN_ENABLED on the API. */
-  demoSignIn: publicProcedure
-    .meta({ openapi: { method: "POST", path: getPath("/demo-sign-in"), tags: TAGS } })
-    .input(zodUndefinedModel)
-    .output(signInOutputSchema)
-    .mutation(async ({ ctx }) => {
-      try {
-        if (!isDemoLoginEnabled()) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Demo login is not enabled." });
-        }
-        const { email, password } = getDemoCredentials();
-        return await authService.signIn({ email, password }, ctx.res);
       } catch (error) {
         mapAuthError(error);
       }
