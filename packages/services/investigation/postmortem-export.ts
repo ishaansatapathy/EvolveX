@@ -1,4 +1,5 @@
 import { formatStructuredEvidenceForPrompt } from "./structured-evidence";
+import { formatIncidentNarrativeForPrompt } from "./incident-narrative";
 import type { InvestigationNoteDto, InvestigationOsContext } from "./types";
 import type { PinpointResult } from "./pinpoint";
 
@@ -157,6 +158,12 @@ export function buildPostmortemMarkdown(input: PostmortemExportInput): string {
           })
           .join("\n");
 
+  const narrativeBlock = formatIncidentNarrativeForPrompt({
+    summary: input.context.incidentNarrative.summary,
+    beats: input.context.incidentNarrative.beats,
+    empty: input.context.incidentNarrative.empty,
+  });
+
   return [
     `# Incident Postmortem · ${input.shortId}`,
     "",
@@ -164,6 +171,7 @@ export function buildPostmortemMarkdown(input: PostmortemExportInput): string {
     "",
     section("Metadata", metadataLines.join("\n")),
     section("Executive summary", executiveSummary),
+    section("Incident narrative", narrativeBlock),
     section("Timeline", timelineBlock),
     section("Structured supporting evidence", structuredBlock),
     section("Evidence completeness", completenessBlock),

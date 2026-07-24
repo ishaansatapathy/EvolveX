@@ -36,6 +36,7 @@ import {
 import { enrichEbpfFromSignozMetrics } from "../ebpf/signoz-metrics";
 import { computeEvidenceCompleteness } from "./evidence-completeness";
 import { buildEvidenceCitationCatalog } from "./evidence-citations";
+import { buildIncidentNarrative, formatIncidentNarrativeForPrompt } from "./incident-narrative";
 import { buildStructuredEvidence, formatStructuredEvidenceForPrompt } from "./structured-evidence";
 import { computeInvestigationPinpoint, loadPinpointFileSnippet } from "./pinpoint";
 import { buildPostmortemFilename, buildPostmortemMarkdown } from "./postmortem-export";
@@ -344,6 +345,12 @@ class InvestigationService {
       evidence: mappedEvidence,
     });
 
+    const incidentNarrative = buildIncidentNarrative({
+      timeline: mappedTimeline,
+      citations: evidenceCitations,
+      primaryService: row.primaryService,
+    });
+
     return {
       investigation: {
         id: row.id,
@@ -369,6 +376,7 @@ class InvestigationService {
       evidenceCompleteness,
       structuredEvidence,
       evidenceCitations,
+      incidentNarrative,
     };
   }
 
@@ -714,6 +722,25 @@ class InvestigationService {
         runtimeSignals: mappedRuntimeRows,
       });
 
+      const mappedTimelineForLlm = timelineRows.map(toTimelineEntry);
+      const narrativeForLlm = buildIncidentNarrative({
+        timeline: mappedTimelineForLlm,
+        citations: buildEvidenceCitationCatalog({
+          timeline: mappedTimelineForLlm,
+          evidence: evidenceRows.map((item) => ({
+            id: item.id,
+            type: item.type,
+            description: item.description,
+            occurredAt: item.occurredAt.toISOString(),
+            url: item.url,
+            confidence: item.confidence,
+            timelineEntryId: item.timelineEntryId,
+            metadata: item.metadata ?? {},
+          })),
+        }),
+        primaryService: row.primaryService,
+      });
+
       await generateAndPersistInvestigationSummary({
         investigationId,
         title: row.title,
@@ -740,6 +767,7 @@ class InvestigationService {
         })),
         runtimeSignalCount: runtimeRows.length,
         structuredEvidenceBlock: formatStructuredEvidenceForPrompt(structuredForLlm),
+        incidentNarrativeBlock: formatIncidentNarrativeForPrompt(narrativeForLlm),
       }).then(async (llmResult) => {
         if (!llmResult) return;
 
@@ -1251,6 +1279,7 @@ class InvestigationService {
       })),
       runtimeSignalCount: context.runtimeSignals.length,
       structuredEvidenceBlock: formatStructuredEvidenceForPrompt(context.structuredEvidence),
+      incidentNarrativeBlock: formatIncidentNarrativeForPrompt(context.incidentNarrative),
     });
   }
 

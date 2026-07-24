@@ -81,6 +81,19 @@ const baseContext: InvestigationOsContext = {
       },
     ],
   },
+  incidentNarrative: {
+    summary: "Deploy preceded trace degradation for payments-svc.",
+    empty: false,
+    beats: [
+      {
+        occurredAt: "2026-01-01T12:31:00.000Z",
+        citationRef: "T1",
+        timelineEntryId: "timeline-1",
+        kind: "TRACE",
+        sentence: "At 12:31:00 UTC, trace evidence appeared — GET /checkout · Duration: 920ms.",
+      },
+    ],
+  },
   evidenceCitations: {
     citations: [
       {
@@ -117,7 +130,8 @@ describe("buildPostmortemMarkdown", () => {
 
     expect(markdown).toContain("# Incident Postmortem · EVX-001");
     expect(markdown).toContain("Checkout latency degraded after deploy [T1]");
-    expect(markdown).toContain("[T1] **TRACE**");
+    expect(markdown).toContain("Incident narrative");
+    expect(markdown).toContain("GET /checkout");
     expect(markdown).toContain("[E1] **log**");
     expect(markdown).toContain("Looks related to Redis pool exhaustion.");
     expect(markdown).toContain("72% evidence collected");

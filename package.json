@@ -17,6 +17,7 @@
     "signoz:spike": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts --spike",
     "signoz:p99": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts --p99",
     "investigation:seed": "dotenv -- pnpm exec tsx scripts/investigation-seed.ts",
+    "investigation:reassign": "dotenv -- pnpm exec tsx scripts/reassign-investigations.ts",
     "obi:up": "docker compose -f docker-compose.obi.yml up",
     "obi:bridge": "dotenv -- pnpm exec tsx scripts/obi-anomaly-bridge.ts"
   },

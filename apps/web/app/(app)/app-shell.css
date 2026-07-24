@@ -1089,6 +1089,42 @@
   margin: 0;
 }
 
+.evx-dash__narrative-card {
+  margin-top: 1rem;
+}
+
+.evx-dash__narrative-summary {
+  margin: 0 0 0.75rem;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: rgba(240, 240, 235, 0.82);
+}
+
+.evx-dash__narrative-beats {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.evx-dash__narrative-beat {
+  padding-left: 0.15rem;
+}
+
+.evx-dash__narrative-beat-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.evx-dash__narrative-sentence {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: rgba(240, 240, 235, 0.88);
+}
+
 .evx-dash__chip--high {
   color: #111;
   background: var(--evx-yellow);

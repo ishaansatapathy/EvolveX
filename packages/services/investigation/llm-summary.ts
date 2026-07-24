@@ -34,6 +34,7 @@ export type SummaryEvidenceInput = {
   }>;
   runtimeSignalCount: number;
   structuredEvidenceBlock?: string;
+  incidentNarrativeBlock?: string;
 };
 
 function formatChangeBlock(
@@ -96,6 +97,9 @@ export async function generateAndPersistInvestigationSummary(
     "",
     "Structured evidence:",
     input.structuredEvidenceBlock ?? "(not available)",
+    "",
+    "Incident narrative:",
+    input.incidentNarrativeBlock ?? "(not available)",
   ].join("\n");
 
   const markdown = await createChatCompletion(

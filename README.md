@@ -91,4 +91,4 @@ pnpm db:seed          # Seed auth demo user
 - **Web:** Vercel (`apps/web/vercel.json`)
 - **DB:** Neon Postgres (no Railway Postgres plugin needed)
 
-See [DEMO.md](./DEMO.md) for the judge walkthrough.
+See [DEMO.md](./DEMO.md) for the judge walkthrough. Local wiring: [docs/WIRING.md](./docs/WIRING.md).

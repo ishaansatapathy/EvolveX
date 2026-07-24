@@ -90,6 +90,7 @@ export default function SettingsPage() {
           </p>
           <p className="evx-dash__stat-note">
             Integrations are configured via <code>.env</code> — this dashboard is read-only status, not per-user forms.
+            Wiring guide: <code>docs/WIRING.md</code>
           </p>
           <div className="evx-dash__cause-actions" style={{ marginTop: "0.9rem" }}>
             <button type="button" className="evx-dash__btn-primary" onClick={() => router.push("/investigations")}>

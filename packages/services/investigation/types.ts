@@ -164,6 +164,19 @@ export const investigationOsContextSchema = z.object({
       }),
     ),
   }),
+  incidentNarrative: z.object({
+    summary: z.string(),
+    empty: z.boolean(),
+    beats: z.array(
+      z.object({
+        occurredAt: z.string(),
+        citationRef: z.string().nullable(),
+        timelineEntryId: z.string(),
+        kind: z.string(),
+        sentence: z.string(),
+      }),
+    ),
+  }),
 });
 
 export const investigationNoteSchema = z.object({

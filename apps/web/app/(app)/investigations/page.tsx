@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from "react";
 
 import { AppPageHeader } from "~/components/evolvex/app-shell";
 import { EvidenceCitationMarkdown } from "~/components/evolvex/evidence-citation-markdown";
+import { IncidentNarrativePanel } from "~/components/evolvex/incident-narrative-panel";
 import { StructuredEvidencePanel } from "~/components/evolvex/structured-evidence-panel";
 import { trpc } from "~/trpc/client";
 
@@ -205,19 +206,31 @@ export default function InvestigationsPage() {
         <AppPageHeader kicker="⊙ ACTIVE CASE FILES" title="Investigations" />
         <section className="evx-dash__settings-card" style={{ marginTop: "1rem" }}>
           <p className="evx-dash__settings-label">NO CASES YET</p>
-          <p className="evx-dash__settings-value">Connect SigNoz Cloud to start investigations</p>
+          <p className="evx-dash__settings-value">Connect SigNoz Cloud — or seed a demo case locally</p>
           <p className="evx-dash__stat-note" style={{ marginTop: "0.75rem" }}>
-            1. Add <code>SIGNOZ_CLOUD_URL</code> and <code>SIGNOZ_API_KEY</code> to your <code>.env</code>
+            <strong>Fastest demo:</strong> in a new terminal run <code>pnpm investigation:seed</code>, then refresh this page.
             <br />
-            2. Expose <code>POST /webhooks/signoz</code> via ngrok and set it in SigNoz Notification Channels
             <br />
-            3. Fire a test alert — Evolvex will open a case file automatically
+            <strong>Live alerts path:</strong>
             <br />
-            4. For tail latency: run <code>pnpm signoz:p99</code>, then create a SigNoz <strong>p99 latency</strong> alert (SigNoz computes percentiles — Evolvex investigates)
+            1. Set <code>SIGNOZ_WEBHOOK_SECRET</code> + expose <code>POST /webhooks/signoz</code> (see <code>docs/WIRING.md</code>)
+            <br />
+            2. Add webhook URL in SigNoz Notification Channels
+            <br />
+            3. Fire alert via <code>pnpm signoz:p99</code> or SigNoz UI
+            <br />
+            4. Ensure <code>INVESTIGATION_OWNER_EMAIL</code> matches your login email
           </p>
           <div className="evx-dash__cause-actions" style={{ marginTop: "1rem" }}>
-            <Link href="/settings" className="evx-dash__btn-primary">
-              Check SigNoz setup →
+            <button
+              type="button"
+              className="evx-dash__btn-primary"
+              onClick={() => void listQuery.refetch()}
+            >
+              Refresh cases →
+            </button>
+            <Link href="/settings" className="evx-dash__btn-ghost">
+              Integration health →
             </Link>
           </div>
         </section>
@@ -310,6 +323,15 @@ export default function InvestigationsPage() {
                   ) : null}
                 </div>
               </div>
+
+              {osContext.incidentNarrative ? (
+                <IncidentNarrativePanel
+                  summary={osContext.incidentNarrative.summary}
+                  beats={osContext.incidentNarrative.beats}
+                  empty={osContext.incidentNarrative.empty}
+                  onCitationClick={scrollToTimelineEntry}
+                />
+              ) : null}
 
               {osContext.evidenceCompleteness ? (
                 <section className="evx-dash__context-card evx-dash__completeness-card">
