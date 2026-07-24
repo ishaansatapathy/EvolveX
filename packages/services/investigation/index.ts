@@ -14,7 +14,7 @@ import {
 import { logger } from "@repo/logger";
 
 import { isSignozConfigured, getDefaultServiceName } from "../signoz-env";
-import { signozClient } from "../signoz/client";
+import { createSignozClient, signozClient } from "../signoz/client";
 import type { SignozAlert, SignozTraceRow, SignozWebhookPayload } from "../signoz/types";
 import {
   buildInvestigationTitle,
@@ -38,8 +38,10 @@ import { buildEvidenceCitationCatalog } from "./evidence-citations";
 import { buildIncidentNarrative, formatIncidentNarrativeForPrompt } from "./incident-narrative";
 import { buildStructuredEvidence, formatStructuredEvidenceForPrompt } from "./structured-evidence";
 import { computeInvestigationPinpoint, loadPinpointFileSnippet } from "./pinpoint";
+import { buildRemediationPlaybooks } from "./remediation-playbooks";
 import { buildRootCauseHypotheses } from "./root-cause-hypotheses";
 import { computeBlastRadius } from "./blast-radius";
+import { computeCrossServiceRca } from "./cross-service-rca";
 import { buildInvestigationKnowledgeGraph } from "./knowledge-graph";
 import { loadServiceGraphNeighborhood } from "./service-graph";
 import { findSimilarInvestigations, listInvestigations } from "./search";
@@ -51,6 +53,11 @@ import { parseGithubDeployEvent, type GithubPushPayload } from "../github/webhoo
 import { parseKubernetesEvent, type KubernetesEventPayload } from "../kubernetes/webhook-parser";
 import { resolveInvestigationOwnerUserId } from "./owner";
 import { resolveOrganizationForUser } from "../organization";
+import {
+  isSignozConfiguredForOrganization,
+  resolveGithubToken,
+  resolveSignozConfig,
+} from "../organization/integrations";
 import {
   canAccessInvestigation,
 } from "./access";
@@ -178,15 +185,22 @@ class InvestigationService {
     const detail = await this.getById(investigationId, userId);
     if (!detail) return null;
 
+    const [row] = await db
+      .select({ organizationId: investigationsTable.organizationId })
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
     const startMs = detail.incidentWindowStart
       ? new Date(detail.incidentWindowStart).getTime()
       : Date.now() - 15 * 60 * 1000;
     const endMs = detail.incidentWindowEnd ? new Date(detail.incidentWindowEnd).getTime() : Date.now();
     const service = detail.affectedServices[0] ?? getDefaultServiceName();
 
-    if (!isSignozConfigured()) return { logs: [], service };
+    if (!(await isSignozConfiguredForOrganization(row?.organizationId))) return { logs: [], service };
 
-    const logs = await signozClient.searchLogs({
+    const signoz = createSignozClient(await resolveSignozConfig(row?.organizationId));
+    const logs = await signoz.searchLogs({
       serviceName: service,
       startMs,
       endMs,
@@ -200,6 +214,12 @@ class InvestigationService {
     const detail = await this.getById(investigationId, userId);
     if (!detail) return null;
 
+    const [row] = await db
+      .select({ organizationId: investigationsTable.organizationId })
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
     const startMs = detail.incidentWindowStart
       ? new Date(detail.incidentWindowStart).getTime()
       : Date.now() - 15 * 60 * 1000;
@@ -207,11 +227,12 @@ class InvestigationService {
     const service = detail.affectedServices[0] ?? getDefaultServiceName();
     const isLatencyIncident = detail.context?.alertKind === "latency_percentile";
 
-    if (!isSignozConfigured()) return { traces: [], service };
+    if (!(await isSignozConfiguredForOrganization(row?.organizationId))) return { traces: [], service };
 
+    const signoz = createSignozClient(await resolveSignozConfig(row?.organizationId));
     const traces = isLatencyIncident
-      ? await signozClient.searchSlowTraces({ serviceName: service, startMs, endMs, limit: 50 })
-      : await signozClient.searchTracesInWindow({ serviceName: service, startMs, endMs, limit: 50 });
+      ? await signoz.searchSlowTraces({ serviceName: service, startMs, endMs, limit: 50 })
+      : await signoz.searchTracesInWindow({ serviceName: service, startMs, endMs, limit: 50 });
 
     return { traces, service };
   }
@@ -340,20 +361,6 @@ class InvestigationService {
       timelineCount: mappedTimeline.length,
     });
 
-    const rootCauseHypotheses = buildRootCauseHypotheses({
-      timeline: mappedTimeline,
-      changeEvents: mappedChangeEvents,
-      citations: evidenceCitations,
-      primaryService: row.primaryService,
-    });
-
-    const blastRadius = computeBlastRadius({
-      primaryService: row.primaryService,
-      dependencies: { nodes, edges },
-      timeline: mappedTimeline,
-      runtimeSignals: mappedRuntimeSignals,
-    });
-
     const citationRefByTimelineId = new Map<string, string>();
     const citationRefByEvidenceId = new Map<string, string>();
     for (const citation of evidenceCitations.citations) {
@@ -365,6 +372,30 @@ class InvestigationService {
       }
     }
 
+    const blastRadius = computeBlastRadius({
+      primaryService: row.primaryService,
+      dependencies: { nodes, edges },
+      timeline: mappedTimeline,
+      runtimeSignals: mappedRuntimeSignals,
+    });
+
+    const crossServiceRca = computeCrossServiceRca({
+      primaryService: row.primaryService,
+      dependencies: { nodes, edges },
+      timeline: mappedTimeline,
+      runtimeSignals: mappedRuntimeSignals,
+      changeEvents: mappedChangeEvents,
+      citationRefByTimelineId,
+    });
+
+    const rootCauseHypotheses = buildRootCauseHypotheses({
+      timeline: mappedTimeline,
+      changeEvents: mappedChangeEvents,
+      citations: evidenceCitations,
+      primaryService: row.primaryService,
+      crossServiceRca,
+    });
+
     const knowledgeGraph = buildInvestigationKnowledgeGraph({
       primaryService: row.primaryService,
       alertName: row.alertName,
@@ -374,6 +405,24 @@ class InvestigationService {
       dependencies: { edges },
       citationRefByTimelineId,
       citationRefByEvidenceId,
+    });
+
+    const hasDeployEvidence = mappedChangeEvents.some(
+      (event) => event.type === "commit" || event.type === "deployment",
+    ) || mappedTimeline.some((entry) => entry.kind === "DEPLOY");
+
+    const remediationPlaybooks = buildRemediationPlaybooks({
+      primaryService: row.primaryService,
+      alertKind: investigationContext?.alertKind ?? null,
+      timeline: mappedTimeline,
+      changeEvents: mappedChangeEvents,
+      evidenceCompleteness,
+      crossServiceRca,
+      citationRefByTimelineId,
+      hasPinpoint: false,
+      hasDeployCorrelation: hasDeployEvidence,
+      ebpfRecommended: investigationContext ? needsEbpfEnrichment(investigationContext) : false,
+      ebpfCollected: ebpfCount > 0,
     });
 
     return {
@@ -412,6 +461,8 @@ class InvestigationService {
       rootCauseHypotheses,
       blastRadius,
       knowledgeGraph,
+      crossServiceRca,
+      remediationPlaybooks,
     };
   }
 
@@ -530,6 +581,7 @@ class InvestigationService {
       severity: row.severity,
       summary: row.summary,
       caseUrl: this.investigationCaseUrl(investigationId),
+      organizationId: row.organizationId,
     });
   }
 
@@ -543,7 +595,8 @@ class InvestigationService {
 
       if (!row) return;
 
-      const signozConfigured = isSignozConfigured();
+      const signozConfigured = await isSignozConfiguredForOrganization(row.organizationId);
+      const signoz = createSignozClient(await resolveSignozConfig(row.organizationId));
       const service = row.affectedServices[0] ?? getDefaultServiceName();
       const startMs = row.incidentWindowStart?.getTime() ?? Date.now() - 15 * 60 * 1000;
       const endMs = row.incidentWindowEnd?.getTime() ?? Date.now();
@@ -556,19 +609,19 @@ class InvestigationService {
       if (signozConfigured) {
         [traces, logs] = await Promise.all([
           isLatencyIncident
-            ? signozClient.searchSlowTraces({
+            ? signoz.searchSlowTraces({
                 serviceName: service,
                 startMs,
                 endMs,
                 limit: 10,
               })
-            : signozClient.searchErrorTraces({
+            : signoz.searchErrorTraces({
                 serviceName: service,
                 startMs,
                 endMs,
                 limit: 10,
               }),
-          signozClient.searchLogs({
+          signoz.searchLogs({
             serviceName: service,
             startMs,
             endMs,
@@ -1245,6 +1298,7 @@ class InvestigationService {
 
     return computeInvestigationPinpoint({
       investigationId,
+      organizationId: row.organizationId,
       service,
       startMs,
       endMs,
@@ -1283,6 +1337,7 @@ class InvestigationService {
         ref: primary.commitSha,
         file: primary.file,
         line: primary.line,
+        githubToken: await resolveGithubToken(row.organizationId),
       });
     }
 
@@ -1434,6 +1489,7 @@ class InvestigationService {
           severity: updated.severity,
           summary: updated.summary,
           caseUrl: this.investigationCaseUrl(investigationId),
+          organizationId: updated.organizationId,
         });
       }
     }

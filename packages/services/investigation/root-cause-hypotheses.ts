@@ -1,4 +1,5 @@
 import type { EvidenceCitationCatalog } from "./evidence-citations";
+import type { CrossServiceRcaResult } from "./cross-service-rca";
 import type { ChangeEventRowDto, TimelineEntryDto } from "./types";
 
 export type RootCauseHypothesis = {
@@ -17,6 +18,7 @@ type BuildHypothesesInput = {
   primaryService: string | null;
   pinpointFile?: string | null;
   pinpointConfidence?: "high" | "medium" | "low" | null;
+  crossServiceRca?: CrossServiceRcaResult;
 };
 
 function refsForKinds(
@@ -64,6 +66,19 @@ export function buildRootCauseHypotheses(input: BuildHypothesesInput): RootCause
       confidence: deployRefs.length >= 2 ? "high" : "medium",
       rationale: `Deploy/change events overlap with degraded telemetry on ${service}.`,
       citationRefs: [...deployRefs, ...traceRefs, ...metricRefs].slice(0, 4),
+      kind: hypotheses.length === 0 ? "primary" : "alternative",
+    });
+  }
+
+  const topUpstreamPath = input.crossServiceRca?.paths.find((path) => path.direction === "upstream_cause");
+  if (topUpstreamPath && topUpstreamPath.services.length > 1) {
+    const pathRefs = topUpstreamPath.hops.flatMap((hop) => hop.citationRefs).slice(0, 4);
+    hypotheses.push({
+      id: "cross-service-upstream",
+      title: `Upstream cause via ${topUpstreamPath.services.join(" → ")}`,
+      confidence: topUpstreamPath.confidence,
+      rationale: topUpstreamPath.summary,
+      citationRefs: pathRefs,
       kind: hypotheses.length === 0 ? "primary" : "alternative",
     });
   }

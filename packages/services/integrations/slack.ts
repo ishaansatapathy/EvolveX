@@ -1,7 +1,7 @@
 import { logger } from "@repo/logger";
 
-export function isSlackConfigured(): boolean {
-  return Boolean(process.env.SLACK_WEBHOOK_URL?.trim());
+export function isSlackConfigured(webhookUrl?: string | null): boolean {
+  return Boolean(webhookUrl?.trim() || process.env.SLACK_WEBHOOK_URL?.trim());
 }
 
 export type SlackInvestigationNotification = {
@@ -60,11 +60,12 @@ function buildSlackBlocks(input: SlackInvestigationNotification) {
   };
 }
 
-/** Sends a Slack incoming-webhook notification. No-op when SLACK_WEBHOOK_URL is unset. */
+/** Sends a Slack incoming-webhook notification. No-op when webhook URL is unset. */
 export async function sendSlackInvestigationNotification(
   input: SlackInvestigationNotification,
+  webhookUrlOverride?: string | null,
 ): Promise<{ sent: boolean; reason?: string }> {
-  const webhookUrl = process.env.SLACK_WEBHOOK_URL?.trim();
+  const webhookUrl = webhookUrlOverride?.trim() || process.env.SLACK_WEBHOOK_URL?.trim();
   if (!webhookUrl) {
     return { sent: false, reason: "SLACK_WEBHOOK_URL not configured" };
   }

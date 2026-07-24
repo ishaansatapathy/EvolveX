@@ -1,17 +1,17 @@
 const GITHUB_API = "https://api.github.com";
 
-function githubHeaders(): HeadersInit {
-  const token = process.env.GITHUB_TOKEN?.trim();
+function githubHeaders(token?: string | null): HeadersInit {
+  const resolved = token?.trim() || process.env.GITHUB_TOKEN?.trim();
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "Evolvex-Investigation-OS",
   };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (resolved) headers.Authorization = `Bearer ${resolved}`;
   return headers;
 }
 
-export function isGithubApiConfigured() {
-  return Boolean(process.env.GITHUB_TOKEN?.trim());
+export function isGithubApiConfigured(token?: string | null) {
+  return Boolean(token?.trim() || process.env.GITHUB_TOKEN?.trim());
 }
 
 export type GithubCommitFile = {
@@ -26,9 +26,10 @@ export type GithubCommitFile = {
 export async function fetchCommitChangedFiles(
   repo: string,
   sha: string,
+  token?: string | null,
 ): Promise<GithubCommitFile[]> {
   const url = `${GITHUB_API}/repos/${repo}/commits/${sha}`;
-  const response = await fetch(url, { headers: githubHeaders() });
+  const response = await fetch(url, { headers: githubHeaders(token) });
 
   if (!response.ok) return [];
 
@@ -58,10 +59,11 @@ export async function fetchRepoFileContent(
   repo: string,
   path: string,
   ref: string,
+  token?: string | null,
 ): Promise<string | null> {
   const encoded = path.split("/").map(encodeURIComponent).join("/");
   const url = `${GITHUB_API}/repos/${repo}/contents/${encoded}?ref=${encodeURIComponent(ref)}`;
-  const response = await fetch(url, { headers: githubHeaders() });
+  const response = await fetch(url, { headers: githubHeaders(token) });
 
   if (!response.ok) return null;
 

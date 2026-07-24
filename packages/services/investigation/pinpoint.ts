@@ -1,5 +1,6 @@
 import { fetchCommitChangedFiles, fetchRepoFileContent, githubBlobUrl, githubCommitUrl, isGithubApiConfigured } from "../github/api";
-import { signozClient } from "../signoz/client";
+import { createSignozClient } from "../signoz/client";
+import { resolveGithubToken, resolveSignozConfig } from "../organization/integrations";
 import { parseStackLocations, pickBestStackLocation } from "./stack-trace";
 import type { ChangeEventRowDto } from "./types";
 
@@ -37,19 +38,23 @@ function fileMatchesChanged(file: string, changedFiles: string[]): boolean {
 
 export async function computeInvestigationPinpoint(input: {
   investigationId: string;
+  organizationId?: string | null;
   service: string;
   startMs: number;
   endMs: number;
   changeEvents: ChangeEventRowDto[];
 }): Promise<PinpointResult> {
+  const signoz = createSignozClient(await resolveSignozConfig(input.organizationId));
+  const githubToken = await resolveGithubToken(input.organizationId);
+
   const [errorLogs, errorTraces] = await Promise.all([
-    signozClient.searchLogs({
+    signoz.searchLogs({
       serviceName: input.service,
       startMs: input.startMs,
       endMs: input.endMs,
       limit: 30,
     }),
-    signozClient.searchErrorTraces({
+    signoz.searchErrorTraces({
       serviceName: input.service,
       startMs: input.startMs,
       endMs: input.endMs,
@@ -79,8 +84,8 @@ export async function computeInvestigationPinpoint(input: {
     sha = typeof deployEvent.metadata.sha === "string" ? deployEvent.metadata.sha : undefined;
     const message = typeof deployEvent.metadata.message === "string" ? deployEvent.metadata.message : undefined;
 
-    if (repo && sha && isGithubApiConfigured()) {
-      const files = await fetchCommitChangedFiles(repo, sha);
+    if (repo && sha && isGithubApiConfigured(githubToken)) {
+      const files = await fetchCommitChangedFiles(repo, sha, githubToken);
       changedFiles = files.map((f) => f.filename);
       deployCorrelation = {
         repo,
@@ -163,7 +168,7 @@ export async function computeInvestigationPinpoint(input: {
     primary,
     candidates,
     deployCorrelation,
-    githubApiConfigured: isGithubApiConfigured(),
+    githubApiConfigured: isGithubApiConfigured(githubToken),
   };
 }
 
@@ -173,10 +178,11 @@ export async function loadPinpointFileSnippet(input: {
   file: string;
   line: number;
   contextLines?: number;
+  githubToken?: string | null;
 }): Promise<string | null> {
-  if (!isGithubApiConfigured()) return null;
+  if (!isGithubApiConfigured(input.githubToken)) return null;
 
-  const content = await fetchRepoFileContent(input.repo, input.file, input.ref);
+  const content = await fetchRepoFileContent(input.repo, input.file, input.ref, input.githubToken);
   if (!content) return null;
 
   const lines = content.split("\n");

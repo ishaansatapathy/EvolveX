@@ -191,6 +191,23 @@ export function buildPostmortemMarkdown(input: PostmortemExportInput): string {
     section("Evidence completeness", completenessBlock),
     section("Change events", changeEventsBlock),
     section("Blast radius", `${context.blastRadius.summary}\n\n${context.blastRadius.impacts.map((item) => `- **${item.service}** (${item.direction}, ${item.impactScore}%): ${item.reasons.join("; ")}`).join("\n")}`),
+    section(
+      "Cross-service propagation",
+      `${context.crossServiceRca.summary}\n\n${context.crossServiceRca.paths.map((path) => `- **${path.services.join(" → ")}** (${path.direction}, ${path.score}%): ${path.summary}`).join("\n")}`,
+    ),
+    section(
+      "Remediation playbook",
+      context.remediationPlaybooks.steps.length === 0
+        ? context.remediationPlaybooks.summary
+        : `${context.remediationPlaybooks.summary}\n\n${context.remediationPlaybooks.steps
+            .map(
+              (step, index) =>
+                `${index + 1}. **${step.title}** (${step.priority}) — ${step.rationale}${
+                  step.commands.length ? `\n   \`\`\`\n   ${step.commands.join("\n   ")}\n   \`\`\`` : ""
+                }${step.citationRefs.length ? `\n   refs: ${step.citationRefs.join(", ")}` : ""}`,
+            )
+            .join("\n\n")}`,
+    ),
     section("Knowledge graph", `${context.knowledgeGraph.summary}\n\n${context.knowledgeGraph.edges.slice(0, 20).map((edge) => `- ${edge.kind}: ${edge.source} → ${edge.target}`).join("\n")}`),
     section("Root cause hypotheses", hypothesesBlock),
     section("Likely culprit · Pinpoint", pinpointBlock),

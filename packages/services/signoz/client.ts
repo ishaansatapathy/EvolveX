@@ -1,6 +1,6 @@
 import { logger } from "@repo/logger";
 
-import { getSignozConfig, isSignozConfigured } from "../signoz-env";
+import { getSignozConfig, isSignozConfigured, type SignozConfig } from "../signoz-env";
 import type { SignozLogRow, SignozTraceRow } from "./types";
 
 type QueryRangeResponse = {
@@ -74,8 +74,14 @@ function parseLogRow(row: Record<string, unknown>): SignozLogRow {
 }
 
 export class SignozClient {
+  constructor(private readonly configOverride?: SignozConfig | null) {}
+
+  private getConfig() {
+    return this.configOverride ?? getSignozConfig();
+  }
+
   isConfigured() {
-    return isSignozConfigured();
+    return this.configOverride ? this.configOverride !== null : isSignozConfigured();
   }
 
   async searchErrorTraces(input: {
@@ -131,7 +137,7 @@ export class SignozClient {
     endMs: number;
     limit?: number;
   }): Promise<SignozLogRow[]> {
-    const config = getSignozConfig();
+    const config = this.getConfig();
     if (!config) return [];
 
     const filterParts = ["severity_text EXISTS"];
@@ -200,7 +206,7 @@ export class SignozClient {
   }
 
   async testConnection(): Promise<{ ok: boolean; message: string }> {
-    const config = getSignozConfig();
+    const config = this.getConfig();
     if (!config) return { ok: false, message: "SigNoz API not configured" };
 
     const url = `${normalizeBaseUrl(config.cloudUrl)}/api/v1/service_accounts/me`;
@@ -229,7 +235,7 @@ export class SignozClient {
     orderKey: "timestamp" | "durationNano";
     orderDirection?: "asc" | "desc";
   }): Promise<SignozTraceRow[]> {
-    const config = getSignozConfig();
+    const config = this.getConfig();
     if (!config) return [];
 
     const filterParts = [...input.filterParts];
@@ -308,3 +314,7 @@ export class SignozClient {
 }
 
 export const signozClient = new SignozClient();
+
+export function createSignozClient(config: SignozConfig | null) {
+  return new SignozClient(config);
+}

@@ -70,10 +70,21 @@ function buildItem(input: Omit<IntegrationHealthItem, "status">): IntegrationHea
   };
 }
 
-/** Workspace-level integration readiness — env config + optional live probe results. */
+/** Workspace-level integration readiness — env config + optional org overrides. */
 export function buildIntegrationHealth(input?: {
   databaseConnected?: boolean | null;
+  orgSignozConfigured?: boolean;
+  orgGithubConfigured?: boolean;
+  orgSlackConfigured?: boolean;
+  orgPagerDutyConfigured?: boolean;
+  orgSource?: "organization" | "environment";
 }): IntegrationHealthResult {
+  const orgSource = input?.orgSource ?? "environment";
+  const signozReady = input?.orgSignozConfigured ?? isSignozConfigured();
+  const githubReady = input?.orgGithubConfigured ?? isGithubApiConfigured();
+  const slackReady = input?.orgSlackConfigured ?? isSlackConfigured();
+  const pagerDutyReady = input?.orgPagerDutyConfigured ?? isPagerDutyConfigured();
+  const sourceLabel = orgSource === "organization" ? "workspace vault" : ".env";
   const baseUrl = getIntegrationBaseUrl();
   const signozConfig = getSignozConfig();
   const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
@@ -85,12 +96,14 @@ export function buildIntegrationHealth(input?: {
       id: "signoz_api",
       label: "SigNoz API",
       category: "telemetry",
-      configured: isSignozConfigured(),
-      authConfigured: isSignozConfigured(),
+      configured: signozReady,
+      authConfigured: signozReady,
       connected: null,
-      detail: signozConfig?.cloudUrl
-        ? `Cloud URL ${signozConfig.cloudUrl}`
-        : "Set SIGNOZ_CLOUD_URL and SIGNOZ_API_KEY",
+      detail: signozReady
+        ? signozConfig?.cloudUrl
+          ? `Cloud URL ${signozConfig.cloudUrl} · ${sourceLabel}`
+          : `Configured via ${sourceLabel}`
+        : "Connect SigNoz in workspace settings or set SIGNOZ_CLOUD_URL + SIGNOZ_API_KEY",
       webhookUrl: null,
       actionLabel: "Test SigNoz API",
     }),
@@ -98,7 +111,7 @@ export function buildIntegrationHealth(input?: {
       id: "signoz_webhook",
       label: "SigNoz alerts",
       category: "telemetry",
-      configured: isSignozConfigured(),
+      configured: signozReady,
       authConfigured: isSignozWebhookConfigured(),
       connected: null,
       detail: isSignozWebhookConfigured()
@@ -137,12 +150,12 @@ export function buildIntegrationHealth(input?: {
       id: "slack",
       label: "Slack notifications",
       category: "platform",
-      configured: isSlackConfigured(),
-      authConfigured: isSlackConfigured(),
+      configured: slackReady,
+      authConfigured: slackReady,
       connected: null,
-      detail: isSlackConfigured()
-        ? "Investigation ready + case resolved alerts post to Slack"
-        : "Set SLACK_WEBHOOK_URL (Incoming Webhook) for on-call notifications",
+      detail: slackReady
+        ? `Investigation ready + case resolved alerts post to Slack · ${sourceLabel}`
+        : "Connect Slack in workspace settings or set SLACK_WEBHOOK_URL",
       webhookUrl: null,
       actionLabel: null,
     }),
@@ -150,12 +163,12 @@ export function buildIntegrationHealth(input?: {
       id: "pagerduty",
       label: "PagerDuty",
       category: "platform",
-      configured: isPagerDutyConfigured(),
-      authConfigured: isPagerDutyConfigured(),
+      configured: pagerDutyReady,
+      authConfigured: pagerDutyReady,
       connected: null,
-      detail: isPagerDutyConfigured()
-        ? "Events API v2 triggers + resolves incidents from Evolvex lifecycle"
-        : "Set PAGERDUTY_ROUTING_KEY for on-call paging",
+      detail: pagerDutyReady
+        ? `Events API v2 triggers + resolves incidents · ${sourceLabel}`
+        : "Connect PagerDuty in workspace settings or set PAGERDUTY_ROUTING_KEY",
       webhookUrl: null,
       actionLabel: null,
     }),
@@ -163,12 +176,12 @@ export function buildIntegrationHealth(input?: {
       id: "github_api",
       label: "GitHub API",
       category: "change",
-      configured: isGithubApiConfigured(),
-      authConfigured: isGithubApiConfigured(),
+      configured: githubReady,
+      authConfigured: githubReady,
       connected: null,
-      detail: isGithubApiConfigured()
-        ? "Pinpoint file fetch + deploy diff correlation enabled"
-        : "Set GITHUB_TOKEN for pinpoint and changed-file correlation",
+      detail: githubReady
+        ? `Pinpoint file fetch + deploy diff correlation enabled · ${sourceLabel}`
+        : "Connect GitHub in workspace settings or set GITHUB_TOKEN",
       webhookUrl: null,
       actionLabel: "Test GitHub token",
     }),

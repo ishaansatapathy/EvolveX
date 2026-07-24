@@ -1,7 +1,7 @@
 import { logger } from "@repo/logger";
 
-export function isPagerDutyConfigured(): boolean {
-  return Boolean(process.env.PAGERDUTY_ROUTING_KEY?.trim());
+export function isPagerDutyConfigured(routingKey?: string | null): boolean {
+  return Boolean(routingKey?.trim() || process.env.PAGERDUTY_ROUTING_KEY?.trim());
 }
 
 export type PagerDutyInvestigationNotification = {
@@ -22,11 +22,12 @@ function mapSeverity(severity?: string | null): "critical" | "error" | "warning"
   return "info";
 }
 
-/** Sends a PagerDuty Events API v2 trigger. No-op when PAGERDUTY_ROUTING_KEY is unset. */
+/** Sends a PagerDuty Events API v2 trigger. No-op when routing key is unset. */
 export async function sendPagerDutyInvestigationNotification(
   input: PagerDutyInvestigationNotification,
+  routingKeyOverride?: string | null,
 ): Promise<{ sent: boolean; reason?: string }> {
-  const routingKey = process.env.PAGERDUTY_ROUTING_KEY?.trim();
+  const routingKey = routingKeyOverride?.trim() || process.env.PAGERDUTY_ROUTING_KEY?.trim();
   if (!routingKey) {
     return { sent: false, reason: "PAGERDUTY_ROUTING_KEY not configured" };
   }

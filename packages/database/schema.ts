@@ -4,6 +4,7 @@ export * from "./models/investigation-jobs";
 export * from "./models/investigation-embedding";
 export * from "./models/audit";
 export * from "./models/organization";
+export * from "./models/organization-integration";
 export * from "./models/user";
 export * from "./models/queue-item";
 export * from "./models/mail-cache";

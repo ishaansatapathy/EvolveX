@@ -6,7 +6,6 @@ type InvestigationCaseNavProps = {
 
 const SECTIONS = [
   { id: "case-story", label: "Story" },
-  { id: "case-replay", label: "Replay" },
   { id: "case-evidence", label: "Evidence" },
   { id: "case-analysis", label: "Analysis" },
   { id: "case-timeline", label: "Timeline" },

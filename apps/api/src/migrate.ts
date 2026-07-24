@@ -134,6 +134,21 @@ CREATE TABLE IF NOT EXISTS "investigation_embeddings" (
 );
 
 CREATE INDEX IF NOT EXISTS "investigation_embeddings_investigation_idx" ON "investigation_embeddings" ("investigation_id");
+
+CREATE TABLE IF NOT EXISTS "organization_integrations" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+  "provider" varchar(32) NOT NULL,
+  "config" jsonb DEFAULT '{}'::jsonb NOT NULL,
+  "secrets_encrypted" text NOT NULL,
+  "updated_by_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp,
+  CONSTRAINT "organization_integrations_provider_check" CHECK ("provider" in ('signoz', 'github', 'slack', 'pagerduty'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "organization_integrations_org_provider_idx" ON "organization_integrations" ("organization_id", "provider");
+CREATE INDEX IF NOT EXISTS "organization_integrations_org_idx" ON "organization_integrations" ("organization_id");
 `;
 
 export async function runMigrations() {

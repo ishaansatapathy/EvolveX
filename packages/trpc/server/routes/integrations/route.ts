@@ -5,6 +5,14 @@ import {
   probeOpenAiConnection,
   probeSignozConnection,
 } from "@repo/services/integrations/probes";
+import { ensureUserOrganization } from "@repo/services/organization";
+import {
+  isGithubConfiguredForOrganization,
+  isSignozConfiguredForOrganization,
+  resolvePagerDutyRoutingKey,
+  resolveSlackWebhookUrl,
+  hasOrganizationIntegrations,
+} from "@repo/services/organization/integrations";
 
 import { z } from "zod";
 
@@ -48,7 +56,7 @@ export const integrationsRouter = router({
     .meta({ openapi: { method: "GET", path: "/integrations/health", tags: TAGS } })
     .input(z.object({}).optional())
     .output(integrationHealthSchema)
-    .query(async () => {
+    .query(async ({ ctx }) => {
       let databaseConnected: boolean | null = null;
 
       try {
@@ -58,7 +66,24 @@ export const integrationsRouter = router({
         databaseConnected = false;
       }
 
-      return buildIntegrationHealth({ databaseConnected });
+      const organization = await ensureUserOrganization(ctx.user.id);
+      const [orgSignozConfigured, orgGithubConfigured, slackWebhook, pagerDutyKey, orgHasVault] =
+        await Promise.all([
+          isSignozConfiguredForOrganization(organization.id),
+          isGithubConfiguredForOrganization(organization.id),
+          resolveSlackWebhookUrl(organization.id),
+          resolvePagerDutyRoutingKey(organization.id),
+          hasOrganizationIntegrations(organization.id),
+        ]);
+
+      return buildIntegrationHealth({
+        databaseConnected,
+        orgSignozConfigured,
+        orgGithubConfigured,
+        orgSlackConfigured: Boolean(slackWebhook),
+        orgPagerDutyConfigured: Boolean(pagerDutyKey),
+        orgSource: orgHasVault ? "organization" : "environment",
+      });
     }),
 
   testSignoz: protectedProcedure

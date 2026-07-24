@@ -234,6 +234,43 @@ export const investigationOsContextSchema = z.object({
       }),
     ),
   }),
+  crossServiceRca: z.object({
+    summary: z.string(),
+    primaryService: z.string().nullable(),
+    paths: z.array(
+      z.object({
+        id: z.string(),
+        direction: z.enum(["upstream_cause", "downstream_effect"]),
+        services: z.array(z.string()),
+        score: z.number(),
+        confidence: z.enum(["high", "medium", "low"]),
+        summary: z.string(),
+        hops: z.array(
+          z.object({
+            service: z.string(),
+            role: z.enum(["origin", "upstream", "downstream"]),
+            evidenceCount: z.number(),
+            unhealthy: z.boolean(),
+            latencyMs: z.number().nullable(),
+            citationRefs: z.array(z.string()),
+          }),
+        ),
+      }),
+    ),
+  }),
+  remediationPlaybooks: z.object({
+    summary: z.string(),
+    steps: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        priority: z.enum(["immediate", "investigate", "mitigate"]),
+        rationale: z.string(),
+        commands: z.array(z.string()),
+        citationRefs: z.array(z.string()),
+      }),
+    ),
+  }),
 });
 
 export const investigationNoteSchema = z.object({

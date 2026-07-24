@@ -6,6 +6,7 @@ import { useState } from "react";
 import { AppPageHeader } from "~/components/evolvex/app-shell";
 import { AuditLogPanel } from "~/components/evolvex/audit-log-panel";
 import { IntegrationHealthPanel } from "~/components/evolvex/integration-health-panel";
+import { OrganizationIntegrationsPanel } from "~/components/evolvex/organization-integrations-panel";
 import { useEvolvexUser } from "~/hooks/use-evolvex-user";
 import { trpc } from "~/trpc/client";
 
@@ -68,6 +69,8 @@ export default function SettingsPage() {
   if (!user) return null;
 
   const health = healthQuery.data;
+  const workspace = organizationsQuery.data?.[0];
+  const isWorkspaceOwner = workspace?.role === "owner";
 
   return (
     <>
@@ -99,8 +102,7 @@ export default function SettingsPage() {
             Mode: {health?.productionMode ? "Production" : "Development"}
           </p>
           <p className="evx-dash__stat-note">
-            Integrations are configured via <code>.env</code> — this dashboard is read-only status, not per-user forms.
-            Wiring guide: <code>docs/WIRING.md</code>
+            Owners can connect SigNoz, GitHub, Slack, and PagerDuty per workspace. Secrets are encrypted at rest.
           </p>
           <div className="evx-dash__cause-actions" style={{ marginTop: "0.9rem" }}>
             <button type="button" className="evx-dash__btn-primary" onClick={() => router.push("/investigations")}>
@@ -112,6 +114,12 @@ export default function SettingsPage() {
           </div>
         </article>
       </section>
+
+      <OrganizationIntegrationsPanel
+        organizationId={workspace?.id}
+        organizationName={workspace?.name}
+        isOwner={isWorkspaceOwner}
+      />
 
       {healthQuery.isLoading ? (
         <p className="evx-dash__stat-note" style={{ marginTop: "1rem" }}>

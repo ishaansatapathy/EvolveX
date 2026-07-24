@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { listAuditEvents } from "@repo/services/audit/log";
 
-import { adminProcedure, router } from "../trpc";
+import { adminProcedure, router } from "../../trpc";
 
 const TAGS = ["Audit"];
 

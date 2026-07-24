@@ -160,6 +160,51 @@ const baseContext: InvestigationOsContext = {
       { id: "e1", source: "timeline:timeline-1", target: "service:payments-svc", kind: "observed_on" },
     ],
   },
+  crossServiceRca: {
+    summary: "Most likely cross-service path: checkout-api → payments-svc (medium confidence).",
+    primaryService: "payments-svc",
+    paths: [
+      {
+        id: "upstream-checkout-payments-svc",
+        direction: "upstream_cause",
+        services: ["checkout-api", "payments-svc"],
+        score: 62,
+        confidence: "medium",
+        summary: "Failure may have propagated checkout-api → payments-svc before surfacing on payments-svc (62% confidence).",
+        hops: [
+          {
+            service: "checkout-api",
+            role: "upstream",
+            evidenceCount: 1,
+            unhealthy: false,
+            latencyMs: null,
+            citationRefs: ["T1"],
+          },
+          {
+            service: "payments-svc",
+            role: "origin",
+            evidenceCount: 1,
+            unhealthy: false,
+            latencyMs: null,
+            citationRefs: [],
+          },
+        ],
+      },
+    ],
+  },
+  remediationPlaybooks: {
+    summary: "2 remediation steps ranked from collected incident evidence.",
+    steps: [
+      {
+        id: "error-log-triage",
+        title: "Correlate error logs and failing spans on payments-svc",
+        priority: "investigate",
+        rationale: "Error-rate incidents need log stack traces aligned with failing trace IDs.",
+        commands: ["# Filter ERROR logs for payments-svc in incident window"],
+        citationRefs: ["T1"],
+      },
+    ],
+  },
 };
 
 describe("buildPostmortemMarkdown", () => {
@@ -184,6 +229,8 @@ describe("buildPostmortemMarkdown", () => {
     expect(markdown).toContain("**Case status:** open");
     expect(markdown).toContain("**AI confidence:** medium");
     expect(markdown).toContain("Deploy regression in payments-svc");
+    expect(markdown).toContain("Remediation playbook");
+    expect(markdown).toContain("Correlate error logs and failing spans on payments-svc");
   });
 
   it("builds a safe filename from short id", () => {

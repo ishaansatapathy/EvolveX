@@ -11,10 +11,11 @@ import { BlastRadiusPanel } from "~/components/evolvex/blast-radius-panel";
 import { CaseStatusControls } from "~/components/evolvex/case-status-controls";
 import { EvidenceCitationMarkdown } from "~/components/evolvex/evidence-citation-markdown";
 import { IncidentNarrativePanel } from "~/components/evolvex/incident-narrative-panel";
-import { IncidentReplayPanel } from "~/components/evolvex/incident-replay-panel";
 import { InvestigationCaseNav } from "~/components/evolvex/investigation-case-nav";
 import { InvestigationSplitPane } from "~/components/evolvex/investigation-split-pane";
 import { KnowledgeGraphPanel } from "~/components/evolvex/knowledge-graph-panel";
+import { PropagationPathPanel } from "~/components/evolvex/propagation-path-panel";
+import { RemediationPlaybooksPanel } from "~/components/evolvex/remediation-playbooks-panel";
 import { RootCauseHypothesesPanel } from "~/components/evolvex/root-cause-hypotheses-panel";
 import { SimilarCasesPanel } from "~/components/evolvex/similar-cases-panel";
 import { StructuredEvidencePanel } from "~/components/evolvex/structured-evidence-panel";
@@ -86,7 +87,6 @@ export default function InvestigationsPageContent() {
   const [caseStatusFilter, setCaseStatusFilter] = useState("");
   const [timelineKindFilter, setTimelineKindFilter] = useState<string>("ALL");
   const [timelineSearch, setTimelineSearch] = useState("");
-  const [replayActiveEntryId, setReplayActiveEntryId] = useState<string | null>(null);
   const detailScrollRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
@@ -231,24 +231,6 @@ export default function InvestigationsPageContent() {
       );
     });
   }, [timeline, timelineKindFilter, timelineSearch]);
-
-  const replaySteps = useMemo(
-    () =>
-      timeline.map((entry) => ({
-        id: entry.id,
-        occurredAt: entry.occurredAt,
-        kind: entry.kind,
-        title: entry.title,
-        detail: entry.detail,
-        citationRef: timelineCitationRefById.get(entry.id) ?? null,
-      })),
-    [timeline, timelineCitationRefById],
-  );
-
-  useEffect(() => {
-    if (!replayActiveEntryId) return;
-    scrollToTimelineEntry(replayActiveEntryId);
-  }, [replayActiveEntryId]);
 
   const summaryText =
     osContext?.investigation.summary ??
@@ -658,14 +640,6 @@ export default function InvestigationsPageContent() {
                 </div>
               </section>
 
-              <section id="case-replay" className="evx-dash__case-section">
-                <p className="evx-dash__case-section-label">Replay</p>
-                <IncidentReplayPanel
-                  steps={replaySteps}
-                  onActiveStepChange={(step) => setReplayActiveEntryId(step?.id ?? null)}
-                />
-              </section>
-
               <section id="case-evidence" className="evx-dash__case-section">
                 <p className="evx-dash__case-section-label">Evidence</p>
                 {osContext.ebpfEnrichment.recommended && !osContext.ebpfEnrichment.collected ? (
@@ -859,6 +833,15 @@ export default function InvestigationsPageContent() {
                   />
                 ) : null}
 
+                {osContext.crossServiceRca ? (
+                  <PropagationPathPanel
+                    summary={osContext.crossServiceRca.summary}
+                    paths={osContext.crossServiceRca.paths}
+                    onCitationClick={scrollToTimelineEntry}
+                    citationEntryIdByRef={timelineCitationEntryIdByRef}
+                  />
+                ) : null}
+
                 {osContext.knowledgeGraph ? (
                   <KnowledgeGraphPanel
                     summary={osContext.knowledgeGraph.summary}
@@ -871,6 +854,15 @@ export default function InvestigationsPageContent() {
                 {osContext.rootCauseHypotheses?.length ? (
                   <RootCauseHypothesesPanel
                     hypotheses={osContext.rootCauseHypotheses}
+                    onCitationClick={scrollToTimelineEntry}
+                    citationEntryIdByRef={timelineCitationEntryIdByRef}
+                  />
+                ) : null}
+
+                {osContext.remediationPlaybooks ? (
+                  <RemediationPlaybooksPanel
+                    summary={osContext.remediationPlaybooks.summary}
+                    steps={osContext.remediationPlaybooks.steps}
                     onCitationClick={scrollToTimelineEntry}
                     citationEntryIdByRef={timelineCitationEntryIdByRef}
                   />
@@ -923,7 +915,7 @@ export default function InvestigationsPageContent() {
                       {filteredTimeline.map((ev) => (
                         <li
                           key={ev.id}
-                          className={`evx-dash__narrative-beat ${replayActiveEntryId === ev.id ? "is-replay-active" : ""}`}
+                          className="evx-dash__narrative-beat"
                           data-timeline-entry-id={ev.id}
                         >
                           <div className="evx-dash__narrative-beat-head">
