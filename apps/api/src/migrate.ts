@@ -81,6 +81,59 @@ CREATE TABLE IF NOT EXISTS "audit_events" (
 CREATE INDEX IF NOT EXISTS "audit_events_created_idx" ON "audit_events" ("created_at" DESC);
 CREATE INDEX IF NOT EXISTS "audit_events_resource_idx" ON "audit_events" ("resource_type", "resource_id");
 CREATE INDEX IF NOT EXISTS "audit_events_actor_idx" ON "audit_events" ("actor_user_id", "created_at" DESC);
+
+CREATE TABLE IF NOT EXISTS "investigation_jobs" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "investigation_id" uuid NOT NULL REFERENCES "investigations"("id") ON DELETE CASCADE,
+  "kind" varchar(32) DEFAULT 'pipeline' NOT NULL,
+  "status" varchar(20) DEFAULT 'pending' NOT NULL,
+  "attempts" integer DEFAULT 0 NOT NULL,
+  "max_attempts" integer DEFAULT 3 NOT NULL,
+  "error_message" text,
+  "scheduled_at" timestamp DEFAULT now() NOT NULL,
+  "started_at" timestamp,
+  "completed_at" timestamp,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp,
+  CONSTRAINT "investigation_jobs_status_check" CHECK ("status" in ('pending', 'running', 'completed', 'failed'))
+);
+
+CREATE INDEX IF NOT EXISTS "investigation_jobs_investigation_status_idx" ON "investigation_jobs" ("investigation_id", "status");
+CREATE INDEX IF NOT EXISTS "investigation_jobs_pending_idx" ON "investigation_jobs" ("status", "scheduled_at");
+
+CREATE TABLE IF NOT EXISTS "organizations" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "name" varchar(128) NOT NULL,
+  "slug" varchar(64) NOT NULL UNIQUE,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp
+);
+
+CREATE TABLE IF NOT EXISTS "organization_members" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+  "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "role" varchar(20) DEFAULT 'member' NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  CONSTRAINT "organization_members_role_check" CHECK ("role" in ('owner', 'member'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "organization_members_org_user_idx" ON "organization_members" ("organization_id", "user_id");
+CREATE INDEX IF NOT EXISTS "organization_members_user_idx" ON "organization_members" ("user_id");
+
+ALTER TABLE "investigations" ADD COLUMN IF NOT EXISTS "organization_id" uuid REFERENCES "organizations"("id") ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS "investigations_organization_id_idx" ON "investigations" ("organization_id");
+
+CREATE TABLE IF NOT EXISTS "investigation_embeddings" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "investigation_id" uuid NOT NULL UNIQUE REFERENCES "investigations"("id") ON DELETE CASCADE,
+  "model" varchar(64) NOT NULL,
+  "embedding" jsonb NOT NULL,
+  "source_text" varchar(512) NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "investigation_embeddings_investigation_idx" ON "investigation_embeddings" ("investigation_id");
 `;
 
 export async function runMigrations() {

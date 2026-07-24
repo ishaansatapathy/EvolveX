@@ -1,5 +1,7 @@
 import { isOpenAiConfigured } from "../ai/openai";
 import { isGithubApiConfigured } from "../github/api";
+import { isSlackConfigured } from "./slack";
+import { isPagerDutyConfigured } from "./pagerduty";
 import {
   getDefaultServiceName,
   getSignozConfig,
@@ -130,6 +132,32 @@ export function buildIntegrationHealth(input?: {
         : "Set OPENAI_API_KEY for AI root-cause summaries",
       webhookUrl: null,
       actionLabel: "Test OpenAI",
+    }),
+    buildItem({
+      id: "slack",
+      label: "Slack notifications",
+      category: "platform",
+      configured: isSlackConfigured(),
+      authConfigured: isSlackConfigured(),
+      connected: null,
+      detail: isSlackConfigured()
+        ? "Investigation ready + case resolved alerts post to Slack"
+        : "Set SLACK_WEBHOOK_URL (Incoming Webhook) for on-call notifications",
+      webhookUrl: null,
+      actionLabel: null,
+    }),
+    buildItem({
+      id: "pagerduty",
+      label: "PagerDuty",
+      category: "platform",
+      configured: isPagerDutyConfigured(),
+      authConfigured: isPagerDutyConfigured(),
+      connected: null,
+      detail: isPagerDutyConfigured()
+        ? "Events API v2 triggers + resolves incidents from Evolvex lifecycle"
+        : "Set PAGERDUTY_ROUTING_KEY for on-call paging",
+      webhookUrl: null,
+      actionLabel: null,
     }),
     buildItem({
       id: "github_api",

@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const githubTest = trpc.integrations.testGithub.useQuery({}, { enabled: false });
   const openAiTest = trpc.integrations.testOpenAi.useQuery({}, { enabled: false });
   const auditQuery = trpc.audit.list.useQuery({ limit: 50 }, { enabled: user?.role === "admin" });
+  const organizationsQuery = trpc.organizations.list.useQuery({}, { enabled: Boolean(user) });
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
 
@@ -87,8 +88,14 @@ export default function SettingsPage() {
 
         <article className="evx-dash__settings-card">
           <p className="evx-dash__settings-label">WORKSPACE</p>
-          <p className="evx-dash__settings-value">{user.fullName}&apos;s workspace</p>
+          <p className="evx-dash__settings-value">
+            {organizationsQuery.data?.[0]?.name ?? `${user.fullName}'s workspace`}
+          </p>
           <p className="evx-dash__stat-note" style={{ marginTop: "0.4rem" }}>
+            Slug: {organizationsQuery.data?.[0]?.slug ?? "pending"} · Role:{" "}
+            {organizationsQuery.data?.[0]?.role ?? user.role}
+          </p>
+          <p className="evx-dash__stat-note">
             Mode: {health?.productionMode ? "Production" : "Development"}
           </p>
           <p className="evx-dash__stat-note">

@@ -19,6 +19,7 @@
     "investigation:seed": "dotenv -- pnpm exec tsx scripts/investigation-seed.ts",
     "investigation:reassign": "dotenv -- pnpm exec tsx scripts/reassign-investigations.ts",
     "investigation:refresh": "dotenv -- pnpm exec tsx scripts/investigation-refresh.ts",
+    "org:backfill": "dotenv -- pnpm exec tsx scripts/backfill-organizations.ts",
     "wiring:secrets": "pnpm exec tsx scripts/generate-wiring-secrets.ts",
     "wiring:check": "dotenv -- pnpm exec tsx scripts/wiring-check.ts",
     "tunnel:refresh": "pnpm exec tsx scripts/tunnel-refresh.ts",

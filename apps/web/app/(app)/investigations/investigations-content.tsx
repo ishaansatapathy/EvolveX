@@ -11,6 +11,7 @@ import { BlastRadiusPanel } from "~/components/evolvex/blast-radius-panel";
 import { CaseStatusControls } from "~/components/evolvex/case-status-controls";
 import { EvidenceCitationMarkdown } from "~/components/evolvex/evidence-citation-markdown";
 import { IncidentNarrativePanel } from "~/components/evolvex/incident-narrative-panel";
+import { IncidentReplayPanel } from "~/components/evolvex/incident-replay-panel";
 import { InvestigationCaseNav } from "~/components/evolvex/investigation-case-nav";
 import { InvestigationSplitPane } from "~/components/evolvex/investigation-split-pane";
 import { KnowledgeGraphPanel } from "~/components/evolvex/knowledge-graph-panel";
@@ -85,6 +86,7 @@ export default function InvestigationsPageContent() {
   const [caseStatusFilter, setCaseStatusFilter] = useState("");
   const [timelineKindFilter, setTimelineKindFilter] = useState<string>("ALL");
   const [timelineSearch, setTimelineSearch] = useState("");
+  const [replayActiveEntryId, setReplayActiveEntryId] = useState<string | null>(null);
   const detailScrollRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
@@ -229,6 +231,24 @@ export default function InvestigationsPageContent() {
       );
     });
   }, [timeline, timelineKindFilter, timelineSearch]);
+
+  const replaySteps = useMemo(
+    () =>
+      timeline.map((entry) => ({
+        id: entry.id,
+        occurredAt: entry.occurredAt,
+        kind: entry.kind,
+        title: entry.title,
+        detail: entry.detail,
+        citationRef: timelineCitationRefById.get(entry.id) ?? null,
+      })),
+    [timeline, timelineCitationRefById],
+  );
+
+  useEffect(() => {
+    if (!replayActiveEntryId) return;
+    scrollToTimelineEntry(replayActiveEntryId);
+  }, [replayActiveEntryId]);
 
   const summaryText =
     osContext?.investigation.summary ??
@@ -638,6 +658,14 @@ export default function InvestigationsPageContent() {
                 </div>
               </section>
 
+              <section id="case-replay" className="evx-dash__case-section">
+                <p className="evx-dash__case-section-label">Replay</p>
+                <IncidentReplayPanel
+                  steps={replaySteps}
+                  onActiveStepChange={(step) => setReplayActiveEntryId(step?.id ?? null)}
+                />
+              </section>
+
               <section id="case-evidence" className="evx-dash__case-section">
                 <p className="evx-dash__case-section-label">Evidence</p>
                 {osContext.ebpfEnrichment.recommended && !osContext.ebpfEnrichment.collected ? (
@@ -893,7 +921,11 @@ export default function InvestigationsPageContent() {
                     ) : (
                     <ol className="evx-dash__narrative-beats">
                       {filteredTimeline.map((ev) => (
-                        <li key={ev.id} className="evx-dash__narrative-beat" data-timeline-entry-id={ev.id}>
+                        <li
+                          key={ev.id}
+                          className={`evx-dash__narrative-beat ${replayActiveEntryId === ev.id ? "is-replay-active" : ""}`}
+                          data-timeline-entry-id={ev.id}
+                        >
                           <div className="evx-dash__narrative-beat-head">
                             <span className="evx-dash__event-at">{formatEventTime(ev.occurredAt)}</span>
                             {timelineCitationRefById.get(ev.id) ? (

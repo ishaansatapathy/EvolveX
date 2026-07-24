@@ -50,7 +50,19 @@ import { parseEbpfEvent, type EbpfEventPayload } from "../ebpf/webhook-parser";
 import { parseGithubDeployEvent, type GithubPushPayload } from "../github/webhook-parser";
 import { parseKubernetesEvent, type KubernetesEventPayload } from "../kubernetes/webhook-parser";
 import { resolveInvestigationOwnerUserId } from "./owner";
+import { resolveOrganizationForUser } from "../organization";
+import {
+  canAccessInvestigation,
+} from "./access";
+import { loadInvestigationAccessContext } from "./access-context";
+import {
+  buildInvestigationEmbeddingText,
+  persistInvestigationEmbedding,
+} from "./embeddings";
 import { generateAndPersistInvestigationSummary } from "./llm-summary";
+import { enqueueInvestigationPipelineJob } from "./job-queue";
+import { kickInvestigationJobWorker } from "./worker";
+import { notifyInvestigationLifecycle } from "../integrations/incident-notifications";
 import {
   buildPersistedSummary,
   buildServiceGraphFromSignoz,
@@ -69,10 +81,6 @@ import type {
   RuntimeSignalRowDto,
   TimelineEntryDto,
 } from "./types";
-
-function canAccessInvestigation(row: SelectInvestigation, userId: string) {
-  return !row.userId || row.userId === userId;
-}
 
 function toListItem(row: SelectInvestigation): InvestigationListItem {
   return {
@@ -123,12 +131,19 @@ function alertFromStoredPayload(row: SelectInvestigation): SignozAlert | undefin
 }
 
 class InvestigationService {
+  private async canUserAccess(row: SelectInvestigation | null | undefined, userId: string) {
+    if (!row) return false;
+    const ctx = await loadInvestigationAccessContext(userId);
+    return canAccessInvestigation(row, ctx);
+  }
+
   async list(
     userId: string,
     limit = 50,
     filters?: import("./search").InvestigationListFilters,
   ): Promise<InvestigationListItem[]> {
-    return listInvestigations(userId, limit, filters);
+    const ctx = await loadInvestigationAccessContext(userId);
+    return listInvestigations(ctx, limit, filters);
   }
 
   async findSimilarCases(investigationId: string, userId: string, limit = 5) {
@@ -143,7 +158,7 @@ class InvestigationService {
       .from(investigationsTable)
       .where(eq(investigationsTable.id, id))
       .limit(1);
-    if (!row || !canAccessInvestigation(row, userId)) return null;
+    if (!row || !(await this.canUserAccess(row, userId))) return null;
     return toDetail(row);
   }
 
@@ -208,7 +223,7 @@ class InvestigationService {
       .where(eq(investigationsTable.id, investigationId))
       .limit(1);
 
-    if (!row || !canAccessInvestigation(row, userId)) return null;
+    if (!row || !(await this.canUserAccess(row, userId))) return null;
 
     const [timeline, evidence, changeEvents, runtimeSignals, summaries] = await Promise.all([
       db
@@ -403,6 +418,7 @@ class InvestigationService {
   async handleSignozWebhook(payload: SignozWebhookPayload): Promise<{ investigationIds: string[] }> {
     const investigationIds: string[] = [];
     const ownerUserId = await resolveInvestigationOwnerUserId();
+    const organizationId = await resolveOrganizationForUser(ownerUserId);
 
     for (const alert of payload.alerts) {
       const fingerprint = alert.fingerprint ?? `${alert.labels.alertname ?? "alert"}-${alert.startsAt}`;
@@ -427,7 +443,7 @@ class InvestigationService {
 
       if (existing) {
         investigationIds.push(existing.id);
-        void this.runPipeline(existing.id);
+        await this.schedulePipeline(existing.id);
         continue;
       }
 
@@ -441,6 +457,7 @@ class InvestigationService {
         .insert(investigationsTable)
         .values({
           userId: ownerUserId,
+          organizationId,
           externalId: fingerprint,
           title,
           status: "building",
@@ -479,10 +496,41 @@ class InvestigationService {
       });
 
       investigationIds.push(created.id);
-      void this.runPipeline(created.id);
+      await this.schedulePipeline(created.id);
     }
 
     return { investigationIds };
+  }
+
+  async schedulePipeline(investigationId: string): Promise<void> {
+    await enqueueInvestigationPipelineJob(investigationId);
+    kickInvestigationJobWorker((id) => this.runPipeline(id));
+  }
+
+  private investigationCaseUrl(investigationId: string) {
+    const clientUrl = process.env.CLIENT_URL?.trim()?.replace(/\/+$/, "");
+    if (!clientUrl) return null;
+    return `${clientUrl}/investigations?investigation=${investigationId}`;
+  }
+
+  private async notifyInvestigationReady(investigationId: string) {
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || row.status !== "ready") return;
+
+    await notifyInvestigationLifecycle({
+      kind: "investigation_ready",
+      shortId: shortInvestigationId(row.id),
+      title: row.title,
+      primaryService: row.primaryService,
+      severity: row.severity,
+      summary: row.summary,
+      caseUrl: this.investigationCaseUrl(investigationId),
+    });
   }
 
   async runPipeline(investigationId: string): Promise<void> {
@@ -817,6 +865,19 @@ class InvestigationService {
           errorMessage: null,
         })
         .where(eq(investigationsTable.id, investigationId));
+
+      await this.notifyInvestigationReady(investigationId);
+
+      void persistInvestigationEmbedding(
+        investigationId,
+        buildInvestigationEmbeddingText({
+          title: row.title,
+          summary: summaryText,
+          alertName: row.alertName,
+          primaryService: service,
+          affectedServices: row.affectedServices,
+        }),
+      );
     } catch (err) {
       logger.error("Investigation pipeline failed", {
         investigationId,
@@ -830,6 +891,7 @@ class InvestigationService {
           updatedAt: new Date(),
         })
         .where(eq(investigationsTable.id, investigationId));
+      throw err;
     }
   }
 
@@ -1105,7 +1167,7 @@ class InvestigationService {
       .where(eq(investigationsTable.id, investigationId))
       .limit(1);
 
-    if (!investigation || !canAccessInvestigation(investigation, userId)) return null;
+    if (!(await this.canUserAccess(investigation, userId))) return null;
 
     const notes = await db
       .select()
@@ -1133,7 +1195,7 @@ class InvestigationService {
       .where(eq(investigationsTable.id, investigationId))
       .limit(1);
 
-    if (!investigation || !canAccessInvestigation(investigation, userId)) return null;
+    if (!(await this.canUserAccess(investigation, userId))) return null;
 
     const [created] = await db
       .insert(investigationNotesTable)
@@ -1169,7 +1231,7 @@ class InvestigationService {
       .where(eq(investigationsTable.id, investigationId))
       .limit(1);
 
-    if (!row || !canAccessInvestigation(row, userId)) return null;
+    if (!row || !(await this.canUserAccess(row, userId))) return null;
 
     const changeEvents = await db
       .select()
@@ -1204,7 +1266,7 @@ class InvestigationService {
       .where(eq(investigationsTable.id, investigationId))
       .limit(1);
 
-    if (!row || !canAccessInvestigation(row, userId)) return null;
+    if (!row || !(await this.canUserAccess(row, userId))) return null;
 
     const context = await this.getOsContext(investigationId, userId);
     if (!context) return null;
@@ -1245,7 +1307,7 @@ class InvestigationService {
       .where(eq(investigationsTable.id, investigationId))
       .limit(1);
 
-    if (!row || !canAccessInvestigation(row, userId)) return null;
+    if (!row || !(await this.canUserAccess(row, userId))) return null;
 
     const notes = (await this.listNotes(investigationId, userId)) ?? [];
     const pinpoint =
@@ -1344,7 +1406,7 @@ class InvestigationService {
       .where(eq(investigationsTable.id, investigationId))
       .limit(1);
 
-    if (!row || !canAccessInvestigation(row, userId)) return null;
+    if (!row || !(await this.canUserAccess(row, userId))) return null;
 
     const previousStatus = row.caseStatus ?? "open";
 
@@ -1362,6 +1424,18 @@ class InvestigationService {
         resourceId: investigationId,
         metadata: { from: previousStatus, to: caseStatus },
       });
+
+      if (caseStatus === "resolved") {
+        await notifyInvestigationLifecycle({
+          kind: "case_resolved",
+          shortId: shortInvestigationId(updated.id),
+          title: updated.title,
+          primaryService: updated.primaryService,
+          severity: updated.severity,
+          summary: updated.summary,
+          caseUrl: this.investigationCaseUrl(investigationId),
+        });
+      }
     }
 
     return updated ? toListItem(updated) : null;
@@ -1374,7 +1448,7 @@ class InvestigationService {
       .where(eq(investigationsTable.id, investigationId))
       .limit(1);
 
-    if (!row || !canAccessInvestigation(row, userId)) return null;
+    if (!row || !(await this.canUserAccess(row, userId))) return null;
 
     const context = (row.investigationContext as InvestigationContext | null) ?? null;
     if (!context || !needsEbpfEnrichment(context)) {
@@ -1446,7 +1520,7 @@ class InvestigationService {
   async rerunAllPipelines(): Promise<number> {
     const rows = await db.select({ id: investigationsTable.id }).from(investigationsTable);
     for (const row of rows) {
-      await this.runPipeline(row.id);
+      await this.schedulePipeline(row.id);
     }
     return rows.length;
   }

@@ -55,6 +55,12 @@ async function main() {
   if (!process.env.SIGNOZ_WEBHOOK_PUBLIC_URL?.trim()) {
     gaps.push("Expose webhook (localtunnel) and set SIGNOZ_WEBHOOK_PUBLIC_URL");
   }
+  if (!process.env.SLACK_WEBHOOK_URL?.trim()) {
+    gaps.push("Set SLACK_WEBHOOK_URL for on-call Slack notifications (optional)");
+  }
+  if (!process.env.PAGERDUTY_ROUTING_KEY?.trim()) {
+    gaps.push("Set PAGERDUTY_ROUTING_KEY for PagerDuty paging (optional)");
+  }
 
   if (gaps.length) {
     console.log("\nRecommended next steps:");

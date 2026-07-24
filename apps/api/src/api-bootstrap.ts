@@ -1,5 +1,9 @@
 import { logger } from "@repo/logger";
 import { isEmailConfigured } from "@repo/services/env";
+import { isSlackConfigured } from "@repo/services/integrations/slack";
+import { isPagerDutyConfigured } from "@repo/services/integrations/pagerduty";
+import InvestigationService from "@repo/services/investigation";
+import { startInvestigationJobWorker } from "@repo/services/investigation/worker";
 import { isSignozConfigured } from "@repo/services/signoz-env";
 
 import { runMigrations } from "./migrate";
@@ -46,6 +50,21 @@ export async function runApiBootstrap(_opts: ApiBootstrapOptions = {}): Promise<
       ? "SigNoz: Cloud API configured"
       : "SigNoz: not configured (set SIGNOZ_CLOUD_URL + SIGNOZ_API_KEY for trace enrichment)",
   );
+
+  logger.info(
+    isSlackConfigured()
+      ? "Slack: webhook configured for investigation notifications"
+      : "Slack: not configured (set SLACK_WEBHOOK_URL for case alerts)",
+  );
+
+  logger.info(
+    isPagerDutyConfigured()
+      ? "PagerDuty: routing key configured for incident paging"
+      : "PagerDuty: not configured (set PAGERDUTY_ROUTING_KEY for on-call alerts)",
+  );
+
+  const investigationService = new InvestigationService();
+  startInvestigationJobWorker((investigationId) => investigationService.runPipeline(investigationId));
 }
 
 export function validateApiEnv(): string[] {
