@@ -35,6 +35,7 @@ export type SummaryEvidenceInput = {
   runtimeSignalCount: number;
   structuredEvidenceBlock?: string;
   incidentNarrativeBlock?: string;
+  investigationMemoryBlock?: string;
 };
 
 function formatChangeBlock(
@@ -78,6 +79,8 @@ export async function generateAndPersistInvestigationSummary(
     "Respond in markdown with sections: ## Summary, ## Likely cause, ## Supporting evidence, ## Recommended next steps.",
     "In Likely cause and Supporting evidence, cite timeline/evidence refs inline using exact markers like [T1] or [E2] from the provided lists.",
     "Do not invent citation IDs.",
+    "When prior resolved incidents are provided, you may reference them as historical context only — never treat them as evidence for the current incident.",
+    "Current incident conclusions must still cite only the current timeline/evidence refs.",
   ].join(" ");
 
   const userPrompt = [
@@ -100,6 +103,9 @@ export async function generateAndPersistInvestigationSummary(
     "",
     "Incident narrative:",
     input.incidentNarrativeBlock ?? "(not available)",
+    "",
+    "Prior resolved incidents (investigation memory — context only, not current evidence):",
+    input.investigationMemoryBlock ?? "(no comparable resolved incidents)",
   ].join("\n");
 
   const markdown = await createChatCompletion(

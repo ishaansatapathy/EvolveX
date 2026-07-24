@@ -57,3 +57,24 @@ jobs:
       - run: pnpm --filter @repo/api test
 
       - run: pnpm build
+
+  production-preflight:
+    runs-on: ubuntu-latest
+    needs: verify
+    if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Validate production env template
+        run: pnpm --filter @repo/services exec vitest run deploy/preflight.test.ts

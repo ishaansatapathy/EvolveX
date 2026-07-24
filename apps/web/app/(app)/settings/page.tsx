@@ -6,7 +6,10 @@ import { useState } from "react";
 import { AppPageHeader } from "~/components/evolvex/app-shell";
 import { AuditLogPanel } from "~/components/evolvex/audit-log-panel";
 import { IntegrationHealthPanel } from "~/components/evolvex/integration-health-panel";
+import { KubernetesOnboardingPanel } from "~/components/evolvex/kubernetes-onboarding-panel";
 import { OrganizationIntegrationsPanel } from "~/components/evolvex/organization-integrations-panel";
+import { ProductionEngineeringPanel } from "~/components/evolvex/production-engineering-panel";
+import { PluginsPanel } from "~/components/evolvex/plugins-panel";
 import { useEvolvexUser } from "~/hooks/use-evolvex-user";
 import { trpc } from "~/trpc/client";
 
@@ -122,6 +125,10 @@ export default function SettingsPage() {
         baseUrl={health?.baseUrl}
       />
 
+      <KubernetesOnboardingPanel organizationId={workspace?.id} isOwner={isWorkspaceOwner} />
+
+      <PluginsPanel organizationId={workspace?.id} isOwner={isWorkspaceOwner} />
+
       {healthQuery.isLoading ? (
         <p className="evx-dash__stat-note" style={{ marginTop: "1rem" }}>
           Loading integration health…
@@ -147,6 +154,8 @@ export default function SettingsPage() {
           Could not load integration health. Check API logs.
         </p>
       )}
+
+      <ProductionEngineeringPanel />
 
       {user.role === "admin" ? (
         <div style={{ marginTop: "1rem" }}>

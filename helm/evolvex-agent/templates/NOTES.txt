@@ -1,0 +1,17 @@
+Evolvex cluster agent installed.
+
+1. Verify webhook endpoint:
+   curl {{ .Values.evolvex.baseUrl }}/webhooks/kubernetes
+
+2. Watch event forwarder logs:
+   kubectl logs -n {{ .Release.Namespace }} deploy/evolvex-event-forwarder -f
+
+3. Point your apps at the in-cluster collector:
+   otlp endpoint: evolvex-otel-collector.{{ .Release.Namespace }}.svc:4317
+
+4. Upgrade with new Evolvex-generated config:
+   {{ .Values.evolvex.baseUrl }}/telemetry-intelligence/collector-config
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Cluster: {{ .Values.cluster.name }}

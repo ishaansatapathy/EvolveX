@@ -15,6 +15,13 @@ export const EVOLVEX_APP_NAV: EvolvexAppNavItem[] = [
     title: "Investigations",
   },
   {
+    icon: "⌗",
+    label: "Search",
+    href: "/search",
+    kicker: "⊙ INVESTIGATION SEARCH",
+    title: "Search",
+  },
+  {
     icon: "⛓",
     label: "Service Map",
     href: "/service-map",

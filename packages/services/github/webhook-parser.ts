@@ -33,7 +33,8 @@ export type GithubPushPayload = z.infer<typeof githubPushPayloadSchema>;
 export function parseGithubDeployEvent(payload: GithubPushPayload) {
   const repo = payload.repository?.full_name ?? payload.repository?.name ?? "unknown-repo";
   const branch = payload.ref?.replace("refs/heads/", "") ?? "main";
-  const sha = payload.head_commit?.id?.slice(0, 7) ?? "unknown";
+  const fullSha = payload.head_commit?.id ?? "unknown";
+  const sha = fullSha === "unknown" ? fullSha : fullSha.slice(0, 7);
   const message = payload.head_commit?.message?.split("\n")[0]?.trim() ?? "Deploy push";
   const author =
     payload.head_commit?.author?.username ??
@@ -48,10 +49,31 @@ export function parseGithubDeployEvent(payload: GithubPushPayload) {
     repo,
     branch,
     sha,
+    fullSha,
     message,
     author,
     occurredAt,
     title: `Deploy ${repo}@${sha}`,
     detail: `${message} — pushed by ${author} to ${branch}`,
   };
+}
+
+/** Maps a GitHub repo slug to a likely SigNoz service.name (Feature #49). */
+export function inferServiceNameFromRepo(repo: string) {
+  const slug = repo.split("/").pop()?.trim().toLowerCase();
+  if (!slug) return null;
+
+  const normalized = slug
+    .replace(/\.git$/i, "")
+    .replace(/[-_](service|svc|api|server|backend|frontend|web|app)$/i, "")
+    .replace(/^(service|svc|api|server|backend|frontend|web|app)[-_]/i, "");
+
+  if (!normalized) return null;
+  if (normalized.endsWith("-svc") || normalized.endsWith("_svc")) return normalized;
+  if (normalized.includes("payment")) return "payments-svc";
+  if (normalized.includes("checkout")) return "checkout-svc";
+  if (normalized.includes("order")) return "orders-svc";
+  if (normalized.includes("auth")) return "auth-svc";
+
+  return `${normalized.replace(/[-_]+/g, "-")}-svc`;
 }

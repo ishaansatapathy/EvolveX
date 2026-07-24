@@ -10,6 +10,7 @@ import { AuditLogPanel } from "~/components/evolvex/audit-log-panel";
 import { BlastRadiusPanel } from "~/components/evolvex/blast-radius-panel";
 import { CaseStatusControls } from "~/components/evolvex/case-status-controls";
 import { EvidenceCitationMarkdown } from "~/components/evolvex/evidence-citation-markdown";
+import { GroupedTimeline } from "~/components/evolvex/grouped-timeline";
 import { IncidentNarrativePanel } from "~/components/evolvex/incident-narrative-panel";
 import { InvestigationCaseNav } from "~/components/evolvex/investigation-case-nav";
 import { InvestigationSplitPane } from "~/components/evolvex/investigation-split-pane";
@@ -17,8 +18,13 @@ import { KnowledgeGraphPanel } from "~/components/evolvex/knowledge-graph-panel"
 import { PropagationPathPanel } from "~/components/evolvex/propagation-path-panel";
 import { RemediationPlaybooksPanel } from "~/components/evolvex/remediation-playbooks-panel";
 import { RootCauseHypothesesPanel } from "~/components/evolvex/root-cause-hypotheses-panel";
+import { InvestigationMemoryPanel } from "~/components/evolvex/investigation-memory-panel";
+import { InteractiveArchitectureView } from "~/components/evolvex/interactive-architecture-view";
+import { PipelineCachePanel } from "~/components/evolvex/pipeline-cache-panel";
 import { SimilarCasesPanel } from "~/components/evolvex/similar-cases-panel";
 import { StructuredEvidencePanel } from "~/components/evolvex/structured-evidence-panel";
+import { TelemetryIntelligencePanel } from "~/components/evolvex/telemetry-intelligence-panel";
+import { useDebouncedValue } from "~/hooks/use-debounced-value";
 import { useEvolvexUser } from "~/hooks/use-evolvex-user";
 import { trpc } from "~/trpc/client";
 
@@ -82,37 +88,49 @@ export default function InvestigationsPageContent() {
   const urlInvestigationId = searchParams.get("investigation");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [caseSearchQuery, setCaseSearchQuery] = useState("");
+  const [serviceFilter, setServiceFilter] = useState("");
   const [severityFilter, setSeverityFilter] = useState("");
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState("");
   const [caseStatusFilter, setCaseStatusFilter] = useState("");
+  const debouncedSearchQuery = useDebouncedValue(caseSearchQuery.trim(), 300);
+  const debouncedServiceFilter = useDebouncedValue(serviceFilter.trim(), 300);
   const [timelineKindFilter, setTimelineKindFilter] = useState<string>("ALL");
   const [timelineSearch, setTimelineSearch] = useState("");
+  const [timelineGroupedView, setTimelineGroupedView] = useState(true);
   const detailScrollRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
-  const listQuery = trpc.investigations.list.useQuery(
-    {
-      limit: 50,
-      query: caseSearchQuery.trim() || undefined,
-      severity: severityFilter || undefined,
-      pipelineStatus:
-        pipelineStatusFilter === "building" ||
-        pipelineStatusFilter === "ready" ||
-        pipelineStatusFilter === "failed"
-          ? pipelineStatusFilter
-          : undefined,
-      caseStatus:
-        caseStatusFilter === "open" ||
-        caseStatusFilter === "investigating" ||
-        caseStatusFilter === "monitoring" ||
-        caseStatusFilter === "resolved"
-          ? caseStatusFilter
-          : undefined,
-    },
-    { refetchInterval: (query) => (query.state.data?.some((item) => item.status === "building") ? 3000 : false) },
+  const listFilters = {
+    limit: 50 as const,
+    service: debouncedServiceFilter || undefined,
+    severity: severityFilter || undefined,
+    pipelineStatus:
+      pipelineStatusFilter === "building" ||
+      pipelineStatusFilter === "ready" ||
+      pipelineStatusFilter === "failed"
+        ? pipelineStatusFilter
+        : undefined,
+    caseStatus:
+      caseStatusFilter === "open" ||
+      caseStatusFilter === "investigating" ||
+      caseStatusFilter === "monitoring" ||
+      caseStatusFilter === "resolved"
+        ? caseStatusFilter
+        : undefined,
+  };
+
+  const listQuery = trpc.investigations.list.useQuery(listFilters, {
+    enabled: debouncedSearchQuery.length === 0,
+    refetchInterval: (query) => (query.state.data?.some((item) => item.status === "building") ? 3000 : false),
+  });
+
+  const searchQuery = trpc.investigations.search.useQuery(
+    { query: debouncedSearchQuery, ...listFilters },
+    { enabled: debouncedSearchQuery.length > 0 },
   );
 
-  const investigations = listQuery.data ?? [];
+  const investigations = debouncedSearchQuery.length > 0 ? (searchQuery.data ?? []) : (listQuery.data ?? []);
+  const listLoading = debouncedSearchQuery.length > 0 ? searchQuery.isLoading : listQuery.isLoading;
 
   useEffect(() => {
     if (isUuid(urlInvestigationId)) {
@@ -153,6 +171,7 @@ export default function InvestigationsPageContent() {
   const updateCaseStatusMutation = trpc.investigations.updateCaseStatus.useMutation({
     onSuccess: () => {
       void listQuery.refetch();
+      void searchQuery.refetch();
       void contextQuery.refetch();
     },
   });
@@ -161,13 +180,31 @@ export default function InvestigationsPageContent() {
       void contextQuery.refetch();
     },
   });
+  const refreshPipelineMutation = trpc.investigations.refreshPipeline.useMutation({
+    onSuccess: () => {
+      void listQuery.refetch();
+      void contextQuery.refetch();
+    },
+  });
   const postmortemExportQuery = trpc.investigations.exportPostmortem.useQuery(
     { id: activeId ?? "" },
     { enabled: false },
   );
+  const integrationsHealthQuery = trpc.integrations.health.useQuery({});
+  const createJiraIssueMutation = trpc.investigations.createJiraIssue.useMutation({
+    onSuccess: () => {
+      void contextQuery.refetch();
+    },
+  });
   const [fixPreview, setFixPreview] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [exportingPostmortem, setExportingPostmortem] = useState(false);
+  const [jiraIssueUrl, setJiraIssueUrl] = useState<string | null>(null);
+
+  const jiraConfigured =
+    integrationsHealthQuery.data?.integrations.some(
+      (item) => item.id === "jira" && item.authConfigured,
+    ) ?? false;
 
   const osContext = contextQuery.data;
   const timeline = osContext?.timeline ?? [];
@@ -304,7 +341,29 @@ export default function InvestigationsPageContent() {
     }
   }
 
-  if (listQuery.isLoading) {
+  async function handleCreateJiraIssue() {
+    if (!activeId) return;
+    if (!jiraConfigured) {
+      alert("Jira is not configured. Set JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY in .env");
+      return;
+    }
+
+    try {
+      const result = await createJiraIssueMutation.mutateAsync({ id: activeId });
+      if (!result) {
+        alert("Could not create Jira issue for this case.");
+        return;
+      }
+      setJiraIssueUrl(result.issueUrl);
+      window.open(result.issueUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Jira issue creation failed");
+    }
+  }
+
+  const activeListQuery = debouncedSearchQuery.length > 0 ? searchQuery : listQuery;
+
+  if (activeListQuery.isLoading) {
     return (
       <>
         <AppPageHeader kicker="⊙ ACTIVE CASE FILES" title="Investigations" />
@@ -313,10 +372,10 @@ export default function InvestigationsPageContent() {
     );
   }
 
-  if (listQuery.isError) {
+  if (activeListQuery.isError) {
     const needsSignIn =
-      listQuery.error.data?.code === "UNAUTHORIZED" ||
-      listQuery.error.message.toLowerCase().includes("not authenticated");
+      activeListQuery.error.data?.code === "UNAUTHORIZED" ||
+      activeListQuery.error.message.toLowerCase().includes("not authenticated");
 
     return (
       <>
@@ -326,7 +385,7 @@ export default function InvestigationsPageContent() {
           <p className="evx-dash__settings-value">
             {needsSignIn
               ? "Sign in again to load your investigation queue."
-              : listQuery.error.message}
+              : activeListQuery.error.message}
           </p>
           <div className="evx-dash__cause-actions" style={{ marginTop: "1rem" }}>
             {needsSignIn ? (
@@ -334,7 +393,7 @@ export default function InvestigationsPageContent() {
                 Sign in →
               </Link>
             ) : (
-              <button type="button" className="evx-dash__btn-primary" onClick={() => void listQuery.refetch()}>
+              <button type="button" className="evx-dash__btn-primary" onClick={() => void activeListQuery.refetch()}>
                 Retry →
               </button>
             )}
@@ -344,7 +403,11 @@ export default function InvestigationsPageContent() {
     );
   }
 
-  if (investigations.length === 0) {
+  const hasActiveFilters = Boolean(
+    debouncedSearchQuery || debouncedServiceFilter || severityFilter || pipelineStatusFilter || caseStatusFilter,
+  );
+
+  if (investigations.length === 0 && !hasActiveFilters) {
     return (
       <>
         <AppPageHeader kicker="⊙ ACTIVE CASE FILES" title="Investigations" />
@@ -407,6 +470,14 @@ export default function InvestigationsPageContent() {
                 />
               </label>
               <div className="evx-dash__queue-filters">
+                <input
+                  type="search"
+                  value={serviceFilter}
+                  onChange={(event) => setServiceFilter(event.target.value)}
+                  placeholder="Service"
+                  className="evx-dash__queue-filter-select evx-search__filter-input"
+                  aria-label="Filter by service"
+                />
                 <select
                   value={severityFilter}
                   onChange={(event) => setSeverityFilter(event.target.value)}
@@ -443,15 +514,21 @@ export default function InvestigationsPageContent() {
                   <option value="resolved">Resolved</option>
                 </select>
               </div>
-              {investigations.length === 0 ? (
+              {listLoading ? (
+                <p className="evx-dash__stat-note evx-dash__queue-empty">Loading cases…</p>
+              ) : investigations.length === 0 ? (
                 <p className="evx-dash__stat-note evx-dash__queue-empty">
-                  {caseSearchQuery.trim() || severityFilter || pipelineStatusFilter || caseStatusFilter
+                  {caseSearchQuery.trim() || severityFilter || pipelineStatusFilter || caseStatusFilter || serviceFilter
                     ? "No cases match your filters."
                     : "No cases yet."}
                 </p>
               ) : null}
               {investigations.map((inc) => {
                 const isActive = activeId === inc.id;
+                const searchMatch =
+                  debouncedSearchQuery.length > 0 && "matchSnippet" in inc
+                    ? (inc as { matchSnippet?: string | null; matchSources?: string[] })
+                    : null;
                 const evidencePercent =
                   isActive && contextQuery.data?.evidenceCompleteness
                     ? contextQuery.data.evidenceCompleteness.completenessPercent
@@ -477,6 +554,9 @@ export default function InvestigationsPageContent() {
                       </span>
                     </span>
                     <span className="evx-dash__incident-title">{inc.title}</span>
+                    {searchMatch?.matchSnippet ? (
+                      <span className="evx-dash__incident-snippet">…{searchMatch.matchSnippet}…</span>
+                    ) : null}
                     <span className="evx-dash__incident-footer">
                       <span className="evx-dash__incident-service">{inc.affectedServices[0] ?? "unknown"}</span>
                       <span className="evx-dash__incident-meta">{formatRelativeTime(inc.createdAt)}</span>
@@ -563,8 +643,26 @@ export default function InvestigationsPageContent() {
                         >
                           Copy markdown
                         </button>
+                        <button
+                          type="button"
+                          className="evx-dash__btn-ghost"
+                          disabled={!jiraConfigured || createJiraIssueMutation.isPending}
+                          onClick={() => void handleCreateJiraIssue()}
+                          title={
+                            jiraConfigured
+                              ? "Create Jira issue with root cause, timeline, and fix"
+                              : "Configure Jira env vars in Settings"
+                          }
+                        >
+                          {createJiraIssueMutation.isPending ? "Creating Jira…" : "Create Jira issue"}
+                        </button>
                       </div>
                     </details>
+                  ) : null}
+                  {jiraIssueUrl ? (
+                    <a href={jiraIssueUrl} target="_blank" rel="noreferrer" className="evx-dash__btn-ghost">
+                      Open Jira issue →
+                    </a>
                   ) : null}
                 </div>
               </header>
@@ -758,6 +856,21 @@ export default function InvestigationsPageContent() {
 
               <section id="case-analysis" className="evx-dash__case-section">
                 <p className="evx-dash__case-section-label">Analysis</p>
+                {osContext.pipelineCache ? (
+                  <PipelineCachePanel
+                    state={osContext.pipelineCache.state}
+                    hit={osContext.pipelineCache.hit}
+                    cachedAt={osContext.pipelineCache.cachedAt}
+                    expiresAt={osContext.pipelineCache.expiresAt}
+                    ttlMs={osContext.pipelineCache.ttlMs}
+                    missReasonLabel={osContext.pipelineCache.missReasonLabel}
+                    skipsExpensiveRecompute={osContext.pipelineCache.skipsExpensiveRecompute}
+                    pipelineStatus={osContext.investigation.status}
+                    refreshing={refreshPipelineMutation.isPending}
+                    refreshMessage={refreshPipelineMutation.data?.message ?? null}
+                    onRefresh={() => activeId && refreshPipelineMutation.mutate({ id: activeId })}
+                  />
+                ) : null}
                 {pinpointQuery.data?.primary ? (
                   <section className="evx-dash__context-card evx-dash__pinpoint-card">
                     <p className="evx-dash__context-card-title">Likely culprit · Pinpoint</p>
@@ -825,11 +938,33 @@ export default function InvestigationsPageContent() {
                   <p className="evx-dash__stat-note">Pinpoint analysis will appear when the case is ready.</p>
                 )}
 
+                {osContext.telemetryIntelligence ? (
+                  <TelemetryIntelligencePanel
+                    data={osContext.telemetryIntelligence}
+                    investigationId={activeId}
+                  />
+                ) : null}
+
                 {osContext.blastRadius ? (
                   <BlastRadiusPanel
                     summary={osContext.blastRadius.summary}
                     totalAffected={osContext.blastRadius.totalAffected}
                     impacts={osContext.blastRadius.impacts}
+                  />
+                ) : null}
+
+                {osContext.serviceMapCorrelation ? (
+                  <InteractiveArchitectureView
+                    summary={osContext.serviceMapCorrelation.summary}
+                    primaryService={osContext.serviceMapCorrelation.primaryService}
+                    graphDepth={osContext.serviceMapCorrelation.graphDepth}
+                    liveSigNozSynced={osContext.serviceMapCorrelation.liveSigNozSynced}
+                    nodes={osContext.serviceMapCorrelation.nodes}
+                    edges={osContext.serviceMapCorrelation.edges}
+                    suspectServices={osContext.serviceMapCorrelation.suspectServices}
+                    blastImpacts={osContext.blastRadius?.impacts}
+                    timeline={timeline}
+                    onTimelineClick={scrollToTimelineEntry}
                   />
                 ) : null}
 
@@ -869,6 +1004,11 @@ export default function InvestigationsPageContent() {
                 ) : null}
 
                 <SimilarCasesPanel cases={similarQuery.data ?? []} activeId={activeId ?? undefined} />
+
+                <InvestigationMemoryPanel
+                  items={osContext.investigationMemory ?? []}
+                  activeId={activeId ?? undefined}
+                />
               </section>
 
               <section id="case-timeline" className="evx-dash__case-section" ref={timelineRef}>
@@ -907,9 +1047,24 @@ export default function InvestigationsPageContent() {
                       <span className="evx-dash__timeline-filter-count">
                         {filteredTimeline.length}/{timeline.length}
                       </span>
+                      <label className="evx-dash__timeline-filter evx-dash__timeline-filter--toggle">
+                        <input
+                          type="checkbox"
+                          checked={timelineGroupedView}
+                          onChange={(event) => setTimelineGroupedView(event.target.checked)}
+                        />
+                        Grouped view
+                      </label>
                     </div>
                     {filteredTimeline.length === 0 ? (
                       <p className="evx-dash__stat-note">No timeline entries match the current filters.</p>
+                    ) : timelineGroupedView ? (
+                      <GroupedTimeline
+                        entries={filteredTimeline}
+                        formatEventTime={formatEventTime}
+                        citationRefByEntryId={timelineCitationRefById}
+                        onEntryClick={scrollToTimelineEntry}
+                      />
                     ) : (
                     <ol className="evx-dash__narrative-beats">
                       {filteredTimeline.map((ev) => (

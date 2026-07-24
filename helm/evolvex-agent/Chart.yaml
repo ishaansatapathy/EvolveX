@@ -1,0 +1,6 @@
+apiVersion: v2
+name: evolvex-agent
+description: Evolvex cluster agent — forwards Kubernetes events and ships OTel collector config
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

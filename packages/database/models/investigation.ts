@@ -47,6 +47,7 @@ export const investigationsTable = pgTable(
     incidentWindowEnd: timestamp("incident_window_end"),
     signozAlertPayload: jsonb("signoz_alert_payload"),
     investigationContext: jsonb("investigation_context"),
+    telemetryIntelligence: jsonb("telemetry_intelligence"),
     errorMessage: text("error_message"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").$onUpdate(() => new Date()),

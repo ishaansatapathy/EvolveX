@@ -1,0 +1,29 @@
+name: Deploy Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Deployed API base URL (e.g. https://your-api.up.railway.app)"
+        required: true
+        type: string
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Post-deploy smoke checks
+        run: pnpm deploy:smoke "${{ inputs.base_url }}"

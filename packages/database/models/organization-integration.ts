@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { organizationsTable } from "./organization";
 import { usersTable } from "./user";
 
-export const organizationIntegrationProviders = ["signoz", "github", "slack", "pagerduty"] as const;
+export const organizationIntegrationProviders = ["signoz", "github", "slack", "pagerduty", "jira", "kubernetes"] as const;
 export type OrganizationIntegrationProvider = (typeof organizationIntegrationProviders)[number];
 
 export const organizationIntegrationsTable = pgTable(
@@ -24,7 +24,7 @@ export const organizationIntegrationsTable = pgTable(
   (t) => ({
     providerCheck: check(
       "organization_integrations_provider_check",
-      sql`${t.provider} in ('signoz', 'github', 'slack', 'pagerduty')`,
+      sql`${t.provider} in ('signoz', 'github', 'slack', 'pagerduty', 'jira', 'kubernetes')`,
     ),
     orgProviderUnique: uniqueIndex("organization_integrations_org_provider_idx").on(
       t.organizationId,

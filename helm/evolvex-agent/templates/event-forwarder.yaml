@@ -1,0 +1,80 @@
+{{- if .Values.evolvex.eventForwarder.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evolvex-event-forwarder-script
+data:
+  forward.sh: |
+    #!/bin/sh
+    set -eu
+    if ! command -v curl >/dev/null 2>&1; then
+      apk add --no-cache curl kubectl >/dev/null
+    fi
+    while true; do
+      version=$(kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || echo "unknown")
+      namespaces=$(kubectl get ns -o jsonpath='{range .items[*]}{.metadata.name}{","}{end}' 2>/dev/null | sed 's/,$//')
+      payload="{\"reason\":\"Heartbeat\",\"message\":\"Evolvex agent connected\",\"clusterVersion\":\"${version}\",\"namespace\":\"default\",\"type\":\"Normal\",\"metadata\":{\"namespaces\":\"${namespaces}\"}}"
+      curl -sS -X POST "$EVOLVEX_WEBHOOK_URL" \
+        -H "Content-Type: application/json" \
+        -H "x-evolvex-k8s-secret: $EVOLVEX_WEBHOOK_SECRET" \
+        -H "x-evolvex-org-id: $EVOLVEX_ORG_ID" \
+        -d "$payload" || true
+
+      kubectl get events -A --field-selector type=Warning -o custom-columns=N:.reason,M:.message,K:.involvedObject.kind,NM:.involvedObject.name,NS:.involvedObject.namespace,TS:.lastTimestamp --no-headers 2>/dev/null \
+        | head -n 5 \
+        | while read -r reason message kind name namespace ts; do
+            [ -z "$reason" ] && continue
+            event_payload="{\"reason\":\"${reason}\",\"message\":\"${message}\",\"type\":\"Warning\",\"involvedObject\":{\"kind\":\"${kind}\",\"name\":\"${name}\",\"namespace\":\"${namespace}\"},\"lastTimestamp\":\"${ts}\"}"
+            curl -sS -X POST "$EVOLVEX_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -H "x-evolvex-k8s-secret: $EVOLVEX_WEBHOOK_SECRET" \
+              -H "x-evolvex-org-id: $EVOLVEX_ORG_ID" \
+              -d "$event_payload" || true
+          done
+      sleep "$POLL_INTERVAL"
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: evolvex-event-forwarder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: evolvex-event-forwarder
+  template:
+    metadata:
+      labels:
+        app: evolvex-event-forwarder
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: forwarder
+          image: {{ .Values.evolvex.eventForwarder.image }}
+          command: ["/bin/sh", "/scripts/forward.sh"]
+          env:
+            - name: EVOLVEX_WEBHOOK_URL
+              value: "{{ trimSuffix "/" .Values.evolvex.baseUrl }}/webhooks/kubernetes"
+            - name: EVOLVEX_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: evolvex-agent-secret
+                  key: webhook-secret
+            - name: EVOLVEX_ORG_ID
+              value: {{ .Values.evolvex.organizationId | quote }}
+            - name: CLUSTER_NAME
+              value: {{ .Values.cluster.name | quote }}
+            - name: POLL_INTERVAL
+              value: {{ .Values.evolvex.eventForwarder.pollIntervalSeconds | quote }}
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            {{- toYaml .Values.resources.eventForwarder | nindent 12 }}
+      volumes:
+        - name: scripts
+          configMap:
+            name: evolvex-event-forwarder-script
+            defaultMode: 0755
+{{- end }}

@@ -3,6 +3,7 @@ import {
   investigationListItemSchema,
   investigationNoteSchema,
   investigationOsContextSchema,
+  investigationSearchResultSchema,
   timelineEntrySchema,
 } from "@repo/services/investigation/types";
 import { isOpenAiConfigured } from "@repo/services/ai/openai";
@@ -41,6 +42,19 @@ const traceRowSchema = z.object({
   durationMs: z.number().optional(),
   hasError: z.boolean().optional(),
   timestamp: z.string().optional(),
+});
+
+const listFiltersSchema = z.object({
+  limit: z.number().int().min(1).max(100).optional(),
+  query: z.string().max(200).optional(),
+  severity: z.string().max(32).optional(),
+  pipelineStatus: z.enum(["building", "ready", "failed"]).optional(),
+  caseStatus: z.enum(["open", "investigating", "monitoring", "resolved"]).optional(),
+  service: z.string().max(128).optional(),
+  alertName: z.string().max(255).optional(),
+  dateFrom: z.string().max(40).optional(),
+  dateTo: z.string().max(40).optional(),
+  timelineKind: z.string().max(20).optional(),
 });
 
 export const investigationsRouter = router({
@@ -96,17 +110,7 @@ export const investigationsRouter = router({
 
   list: protectedProcedure
     .meta({ openapi: { method: "GET", path: "/investigations", tags: TAGS } })
-    .input(
-      z
-        .object({
-          limit: z.number().int().min(1).max(100).optional(),
-          query: z.string().max(200).optional(),
-          severity: z.string().max(32).optional(),
-          pipelineStatus: z.enum(["building", "ready", "failed"]).optional(),
-          caseStatus: z.enum(["open", "investigating", "monitoring", "resolved"]).optional(),
-        })
-        .optional(),
-    )
+    .input(listFiltersSchema.optional())
     .output(z.array(investigationListItemSchema))
     .query(async ({ ctx, input }) => {
       try {
@@ -115,7 +119,38 @@ export const investigationsRouter = router({
           severity: input?.severity,
           pipelineStatus: input?.pipelineStatus,
           caseStatus: input?.caseStatus,
+          service: input?.service,
+          alertName: input?.alertName,
+          dateFrom: input?.dateFrom,
+          dateTo: input?.dateTo,
+          timelineKind: input?.timelineKind,
         });
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  search: protectedProcedure
+    .meta({ openapi: { method: "GET", path: "/investigations/search", tags: TAGS } })
+    .input(
+      z.object({
+        query: z.string().min(1).max(200),
+        limit: z.number().int().min(1).max(100).optional(),
+        severity: z.string().max(32).optional(),
+        pipelineStatus: z.enum(["building", "ready", "failed"]).optional(),
+        caseStatus: z.enum(["open", "investigating", "monitoring", "resolved"]).optional(),
+        service: z.string().max(128).optional(),
+        alertName: z.string().max(255).optional(),
+        dateFrom: z.string().max(40).optional(),
+        dateTo: z.string().max(40).optional(),
+        timelineKind: z.string().max(20).optional(),
+      }),
+    )
+    .output(z.array(investigationSearchResultSchema))
+    .query(async ({ ctx, input }) => {
+      try {
+        const { query, limit, ...filters } = input;
+        return await investigationService.search(ctx.user.id, query, limit ?? 50, filters);
       } catch (error) {
         mapServiceError(error);
       }
@@ -386,6 +421,32 @@ export const investigationsRouter = router({
       }
     }),
 
+  createJiraIssue: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .output(
+      z
+        .object({
+          issueKey: z.string(),
+          issueId: z.string(),
+          issueUrl: z.string(),
+          summary: z.string(),
+          priority: z.string(),
+          createdAt: z.string(),
+        })
+        .nullable(),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await investigationService.createJiraIssue(input.id, ctx.user.id);
+        if (!result) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+        }
+        return result;
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
   updateCaseStatus: protectedProcedure
     .input(
       z.object({
@@ -421,6 +482,26 @@ export const investigationsRouter = router({
     .mutation(async ({ ctx, input }) => {
       try {
         const result = await investigationService.triggerEbpfEnrichment(input.id, ctx.user.id);
+        if (!result) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+        }
+        return result;
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  refreshPipeline: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .output(
+      z.object({
+        scheduled: z.boolean(),
+        message: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await investigationService.refreshPipeline(input.id, ctx.user.id);
         if (!result) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
         }

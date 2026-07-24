@@ -35,6 +35,15 @@ export const investigationListItemSchema = z.object({
   updatedAt: z.string().nullable(),
 });
 
+export const investigationSearchResultSchema = investigationListItemSchema.extend({
+  primaryService: z.string().nullable(),
+  alertName: z.string().nullable(),
+  matchSources: z.array(
+    z.enum(["title", "short_id", "service", "alert", "summary", "timeline"]),
+  ),
+  matchSnippet: z.string().nullable(),
+});
+
 export const timelineEntrySchema = z.object({
   id: z.string(),
   occurredAt: z.string(),
@@ -128,6 +137,19 @@ export const investigationOsContextSchema = z.object({
     recommended: z.boolean(),
     collected: z.boolean(),
     canTrigger: z.boolean(),
+  }),
+  pipelineCache: z.object({
+    enabled: z.literal(true),
+    pipelineVersion: z.number(),
+    ttlMs: z.number(),
+    state: z.enum(["valid", "miss", "expired", "stale", "none"]),
+    hit: z.boolean(),
+    cachedAt: z.string().nullable(),
+    expiresAt: z.string().nullable(),
+    missReason: z.string().nullable(),
+    missReasonLabel: z.string(),
+    contentFingerprint: z.string().nullable(),
+    skipsExpensiveRecompute: z.boolean(),
   }),
   evidenceCompleteness: z.object({
     completenessPercent: z.number(),
@@ -258,6 +280,53 @@ export const investigationOsContextSchema = z.object({
       }),
     ),
   }),
+  serviceMapCorrelation: z
+    .object({
+      summary: z.string(),
+      primaryService: z.string(),
+      upstream: z.array(z.string()),
+      downstream: z.array(z.string()),
+      affectedServices: z.array(z.string()),
+      graphDepth: z.number(),
+      liveSigNozSynced: z.boolean(),
+      nodes: z.array(
+        z.object({
+          service: z.string(),
+          role: z.enum(["primary", "upstream", "downstream"]),
+          healthy: z.boolean(),
+          latencyMs: z.number().nullable(),
+          evidenceCount: z.number(),
+          changeCount: z.number(),
+        }),
+      ),
+      edges: z.array(
+        z.object({
+          source: z.string(),
+          destination: z.string(),
+          healthy: z.boolean(),
+          latencyMs: z.number().nullable(),
+          evidenceOnPath: z.number(),
+        }),
+      ),
+      propagationPaths: z.array(
+        z.object({
+          id: z.string(),
+          direction: z.enum(["upstream_cause", "downstream_effect"]),
+          services: z.array(z.string()),
+          score: z.number(),
+          confidence: z.enum(["high", "medium", "low"]),
+          summary: z.string(),
+        }),
+      ),
+      suspectServices: z.array(
+        z.object({
+          service: z.string(),
+          score: z.number(),
+          reasons: z.array(z.string()),
+        }),
+      ),
+    })
+    .nullable(),
   remediationPlaybooks: z.object({
     summary: z.string(),
     steps: z.array(
@@ -271,6 +340,98 @@ export const investigationOsContextSchema = z.object({
       }),
     ),
   }),
+  investigationMemory: z.array(
+    z.object({
+      investigationId: z.string(),
+      shortId: z.string(),
+      title: z.string(),
+      similarityScore: z.number(),
+      matchReasons: z.array(z.string()),
+      symptoms: z.string(),
+      rootCause: z.string().nullable(),
+      fixApplied: z.string().nullable(),
+      fixOutcome: z.string(),
+      durationMs: z.number().nullable(),
+      impactSummary: z.string().nullable(),
+      resolvedAt: z.string(),
+      primaryService: z.string().nullable(),
+    }),
+  ),
+  telemetryIntelligence: z
+    .object({
+      version: z.number(),
+      processedAt: z.string(),
+      intelligenceState: z.enum(["normal", "elevated", "incident", "change_boost"]),
+      alertEnrichment: z
+        .object({
+          alertName: z.string(),
+          serviceNames: z.array(z.string()),
+          severity: z.string().nullable(),
+          recentDeployCount: z.number(),
+          enrichmentNotes: z.array(z.string()),
+          similarAlerts: z.array(
+            z.object({
+              shortId: z.string(),
+              title: z.string(),
+              matchReason: z.string(),
+            }),
+          ),
+        })
+        .nullable()
+        .optional(),
+      serviceMapCorrelation: z
+        .object({
+          primaryService: z.string(),
+          upstream: z.array(z.string()),
+          downstream: z.array(z.string()),
+          affectedServices: z.array(z.string()),
+          propagationPaths: z.array(z.array(z.string())),
+        })
+        .nullable()
+        .optional(),
+      samplingPolicies: z.array(
+        z.object({
+          serviceName: z.string(),
+          mode: z.string(),
+          sampleRate: z.number(),
+          reason: z.string(),
+        }),
+      ),
+      collectorConfigHint: z.string().optional(),
+      clickhouseInsights: z
+        .object({
+          enabled: z.literal(true),
+          serviceName: z.string(),
+          windowMinutes: z.number(),
+          source: z.enum(["materialized_view", "native_query"]),
+          materializedViewsAvailable: z.boolean(),
+          latencySummary: z
+            .object({
+              requests: z.number(),
+              errors: z.number(),
+              p99Ms: z.number().nullable(),
+            })
+            .nullable(),
+          topFailingEndpoints: z.array(
+            z.object({
+              endpoint: z.string(),
+              errorCount: z.number(),
+              p99Ms: z.number().nullable(),
+            }),
+          ),
+          queryElapsedMs: z.number().nullable(),
+        })
+        .nullable()
+        .optional(),
+      vectorContext: z
+        .object({
+          model: z.string(),
+          dimensions: z.number(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .nullable(),
 });
 
 export const investigationNoteSchema = z.object({
@@ -297,6 +458,7 @@ export const investigationDetailSchema = investigationListItemSchema.extend({
 
 export type InvestigationContext = z.infer<typeof investigationContextSchema>;
 export type InvestigationListItem = z.infer<typeof investigationListItemSchema>;
+export type InvestigationSearchResult = z.infer<typeof investigationSearchResultSchema>;
 export type InvestigationDetail = z.infer<typeof investigationDetailSchema>;
 export type TimelineEntryDto = z.infer<typeof timelineEntrySchema>;
 export type EvidenceRowDto = z.infer<typeof evidenceRowSchema>;

@@ -36,7 +36,7 @@ async function main() {
   const service = new InvestigationService();
   console.log(`[investigation:refresh] Re-running evidence pipeline for ${investigationId}…`);
 
-  await service.runPipeline(investigationId);
+  await service.refreshInvestigation(investigationId);
 
   const [row] = await db
     .select({

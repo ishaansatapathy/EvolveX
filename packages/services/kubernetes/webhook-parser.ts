@@ -26,6 +26,9 @@ export const kubernetesEventSchema = z.object({
       namespace: z.string().optional(),
     })
     .optional(),
+  /** Cluster metadata forwarded by evolvex-agent Helm chart */
+  clusterVersion: z.string().optional(),
+  namespace: z.string().optional(),
   /** ArgoCD / Flux style deploy notification */
   service: z.string().optional(),
   revision: z.string().optional(),
@@ -42,13 +45,21 @@ export function parseKubernetesEvent(payload: KubernetesEventPayload) {
   const message = payload.message ?? `${kind} ${name} — ${reason}`;
   const service =
     payload.service ??
-    (kind === "Deployment" || kind === "Pod" ? name.replace(/-[a-z0-9]{5,10}$/, "") : name);
+    (kind === "Deployment" || kind === "Pod" || kind === "ReplicaSet"
+      ? name.replace(/-[a-z0-9]{5,12}$/i, "").replace(/-deploy$/i, "")
+      : name);
 
   const occurredAt = payload.lastTimestamp
     ? new Date(payload.lastTimestamp)
     : payload.firstTimestamp
       ? new Date(payload.firstTimestamp)
       : new Date();
+
+  const severity = classifyKubernetesSeverity(reason, message);
+  const title =
+    severity === "critical"
+      ? `K8s incident · ${kind} ${reason}`
+      : `K8s ${kind}: ${reason}`;
 
   return {
     kind,
@@ -59,7 +70,24 @@ export function parseKubernetesEvent(payload: KubernetesEventPayload) {
     service,
     revision: payload.revision,
     occurredAt,
-    title: `K8s ${kind}: ${reason}`,
+    severity,
+    title,
     detail: `[${namespace}/${name}] ${message}`,
+    fingerprint: `${namespace}|${kind}|${name}|${reason}`.toLowerCase(),
   };
+}
+
+export function classifyKubernetesSeverity(reason: string, message: string): "critical" | "warning" | "info" {
+  const blob = `${reason} ${message}`.toLowerCase();
+  if (
+    /oom|crashloop|failed|error|backoff|unhealthy|evicted|kill|imagepull|failedscheduling|node not ready/.test(
+      blob,
+    )
+  ) {
+    return "critical";
+  }
+  if (/warning|pending|progressing|scaling|restart/.test(blob)) {
+    return "warning";
+  }
+  return "info";
 }

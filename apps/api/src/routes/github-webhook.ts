@@ -2,10 +2,16 @@ import express from "express";
 import type { Request } from "express";
 import { logger } from "@repo/logger";
 import InvestigationService from "@repo/services/investigation";
+import { createTelemetryIntelligenceOrchestrator } from "@repo/services/telemetry-intelligence";
 import { githubPushPayloadSchema } from "@repo/services/github/webhook-parser";
 import { verifyGithubHmac } from "@repo/services/webhooks/verify";
+import { resolveInvestigationOwnerUserId } from "@repo/services/investigation/owner";
+import { resolveOrganizationForUser } from "@repo/services/organization";
 
 const investigationService = new InvestigationService();
+const telemetryIntelligence = createTelemetryIntelligenceOrchestrator((payload) =>
+  investigationService.handleSignozWebhook(payload),
+);
 
 export const githubWebhookRouter = express.Router();
 
@@ -45,7 +51,11 @@ githubWebhookRouter.post("/", async (req, res) => {
   }
 
   try {
-    const result = await investigationService.handleGithubWebhook(parsed.data);
+    const ownerUserId = await resolveInvestigationOwnerUserId();
+    const organizationId = await resolveOrganizationForUser(ownerUserId);
+    await telemetryIntelligence.handleGithubDeploy(parsed.data, organizationId);
+
+    const result = await investigationService.handleGithubWebhook(parsed.data, { organizationId });
     logger.info("GitHub webhook processed", result);
     return res.status(200).json({ ok: true, ...result });
   } catch (err) {

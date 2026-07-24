@@ -9,3 +9,6 @@ healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
+
+# After Railway deploy succeeds, run GitHub Action "Deploy Smoke" with your public BASE_URL,
+# or locally: pnpm deploy:smoke https://your-api.up.railway.app

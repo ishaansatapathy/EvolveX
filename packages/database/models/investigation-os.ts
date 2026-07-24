@@ -20,6 +20,8 @@ export const changeEventTypeEnum = [
   "config",
   "terraform",
   "kubernetes",
+  "feature_flag",
+  "cicd",
 ] as const;
 export type ChangeEventType = (typeof changeEventTypeEnum)[number];
 

@@ -1,0 +1,47 @@
+{{- if .Values.collector.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evolvex-collector-config
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      batch: {}
+      attributes/evolvex/enrichment:
+        actions:
+          - key: evolvex.organization_id
+            action: upsert
+            value: "{{ .Values.evolvex.organizationId }}"
+          - key: evolvex.cluster_name
+            action: upsert
+            value: "{{ .Values.cluster.name }}"
+          - key: evolvex.sampling_mode
+            action: upsert
+            value: "managed"
+    exporters:
+      otlp/signoz:
+        endpoint: {{ .Values.signoz.otlpEndpoint | quote }}
+        headers:
+          signoz-ingestion-key: ${SIGNOZ_INGESTION_KEY}
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [attributes/evolvex/enrichment, batch]
+          exporters: [otlp/signoz]
+        metrics:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlp/signoz]
+        logs:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlp/signoz]
+{{- end }}

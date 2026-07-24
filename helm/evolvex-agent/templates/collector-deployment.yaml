@@ -1,0 +1,56 @@
+{{- if .Values.collector.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: evolvex-otel-collector
+spec:
+  replicas: {{ .Values.collector.replicaCount }}
+  selector:
+    matchLabels:
+      app: evolvex-otel-collector
+  template:
+    metadata:
+      labels:
+        app: evolvex-otel-collector
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: collector
+          image: {{ .Values.collector.image }}
+          args: ["--config=/etc/otelcol/otel-collector-config.yaml"]
+          env:
+            - name: SIGNOZ_INGESTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: evolvex-agent-secret
+                  key: signoz-ingestion-key
+          ports:
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol
+          resources:
+            {{- toYaml .Values.resources.collector | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: evolvex-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: evolvex-otel-collector
+spec:
+  selector:
+    app: evolvex-otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+{{- end }}

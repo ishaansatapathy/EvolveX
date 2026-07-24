@@ -21,6 +21,14 @@ import { getIntegrationBaseUrl, isGithubWebhookConfigured, isSignozWebhookConfig
 import { isGithubApiConfigured } from "../github/api";
 import { isSlackConfigured } from "../integrations/slack";
 import { isPagerDutyConfigured } from "../integrations/pagerduty";
+import { isJiraConfigured, type JiraConfig } from "../jira/config";
+import {
+  buildKubernetesOnboardingPlan,
+  generateKubernetesWebhookSecret,
+  mergeKubernetesClusterMetadata,
+  type KubernetesClusterMetadata,
+} from "../kubernetes/onboarding";
+import { isKubernetesWebhookConfigured } from "../integrations/config";
 import { recordAuditEvent } from "../audit/log";
 
 export type OrganizationIntegrationSummary = {
@@ -52,6 +60,19 @@ type UpsertSlackInput = {
 
 type UpsertPagerDutyInput = {
   routingKey?: string;
+};
+
+type UpsertJiraInput = {
+  baseUrl: string;
+  email?: string;
+  apiToken?: string;
+  projectKey?: string;
+  issueType?: string;
+};
+
+type UpsertKubernetesInput = {
+  clusterName?: string;
+  webhookSecret?: string;
 };
 
 async function assertOrganizationOwner(userId: string, organizationId: string) {
@@ -165,6 +186,58 @@ function buildPagerDutySummaryFromEnv(): OrganizationIntegrationSummary {
   };
 }
 
+function buildJiraSummaryFromEnv(): OrganizationIntegrationSummary {
+  const config = getJiraConfigFromEnv();
+  return {
+    provider: "jira",
+    configured: isJiraConfigured(),
+    source: "environment",
+    config: {
+      baseUrl: config?.baseUrl ?? null,
+      projectKey: config?.projectKey ?? null,
+      issueType: config?.issueType ?? "Bug",
+    },
+    maskedSecrets: {
+      email: maskSecret(config?.email),
+      apiToken: maskSecret(config?.apiToken),
+    },
+    updatedAt: null,
+  };
+}
+
+function buildKubernetesSummaryFromEnv(): OrganizationIntegrationSummary {
+  return {
+    provider: "kubernetes",
+    configured: isKubernetesWebhookConfigured(),
+    source: "environment",
+    config: {
+      clusterName: process.env.KUBERNETES_CLUSTER_NAME ?? null,
+      lastEventAt: null,
+    },
+    maskedSecrets: {
+      webhookSecret: maskSecret(process.env.KUBERNETES_WEBHOOK_SECRET),
+    },
+    updatedAt: null,
+  };
+}
+
+function getJiraConfigFromEnv(): JiraConfig | null {
+  const baseUrl = process.env.JIRA_BASE_URL?.trim().replace(/\/+$/, "");
+  const email = process.env.JIRA_EMAIL?.trim();
+  const apiToken = process.env.JIRA_API_TOKEN?.trim();
+  const projectKey = process.env.JIRA_PROJECT_KEY?.trim();
+
+  if (!baseUrl || !email || !apiToken || !projectKey) return null;
+
+  return {
+    baseUrl,
+    email,
+    apiToken,
+    projectKey,
+    issueType: process.env.JIRA_ISSUE_TYPE?.trim() || "Bug",
+  };
+}
+
 function summaryFromRow(row: {
   provider: OrganizationIntegrationProvider;
   config: Record<string, unknown> | null;
@@ -211,7 +284,14 @@ export async function listOrganizationIntegrations(
 
   const byProvider = new Map(rows.map((row) => [row.provider, row]));
 
-  const providers: OrganizationIntegrationProvider[] = ["signoz", "github", "slack", "pagerduty"];
+  const providers: OrganizationIntegrationProvider[] = [
+    "signoz",
+    "github",
+    "slack",
+    "pagerduty",
+    "jira",
+    "kubernetes",
+  ];
   return providers.map((provider) => {
     const row = byProvider.get(provider);
     if (row) return summaryFromRow(row);
@@ -219,6 +299,8 @@ export async function listOrganizationIntegrations(
     if (provider === "signoz") return buildSignozSummaryFromEnv();
     if (provider === "github") return buildGithubSummaryFromEnv();
     if (provider === "slack") return buildSlackSummaryFromEnv();
+    if (provider === "jira") return buildJiraSummaryFromEnv();
+    if (provider === "kubernetes") return buildKubernetesSummaryFromEnv();
     return buildPagerDutySummaryFromEnv();
   });
 }
@@ -313,6 +395,139 @@ export async function upsertPagerDutyIntegration(
   }
 
   await saveIntegration(userId, organizationId, "pagerduty", {}, secrets, "integration.pagerduty.upsert");
+}
+
+export async function upsertJiraIntegration(
+  userId: string,
+  organizationId: string,
+  input: UpsertJiraInput,
+) {
+  await assertOrganizationOwner(userId, organizationId);
+
+  const baseUrl = input.baseUrl.trim().replace(/\/+$/, "");
+  if (!baseUrl) throw serviceError("BAD_REQUEST", "Jira base URL is required");
+
+  const existing = await loadIntegrationRow(organizationId, "jira");
+  const existingSecrets = existing ? decryptRowSecrets(existing) : {};
+  const existingConfig = existing?.config ?? {};
+  const secrets = mergeSecrets(existingSecrets, {
+    email: input.email,
+    apiToken: input.apiToken,
+  });
+
+  const projectKey =
+    input.projectKey?.trim() ||
+    (typeof existingConfig.projectKey === "string" ? existingConfig.projectKey.trim() : "");
+
+  if (!secrets.email) {
+    throw serviceError("BAD_REQUEST", "Jira email is required");
+  }
+  if (!secrets.apiToken) {
+    throw serviceError("BAD_REQUEST", "Jira API token is required");
+  }
+  if (!projectKey) {
+    throw serviceError("BAD_REQUEST", "Jira project key is required");
+  }
+
+  const config = {
+    baseUrl,
+    projectKey,
+    issueType:
+      input.issueType?.trim() ||
+      (typeof existingConfig.issueType === "string" ? existingConfig.issueType.trim() : "") ||
+      "Bug",
+  };
+
+  await saveIntegration(userId, organizationId, "jira", config, secrets, "integration.jira.upsert");
+}
+
+export async function generateKubernetesOnboarding(
+  userId: string,
+  organizationId: string,
+  input?: { clusterName?: string; rotateSecret?: boolean },
+) {
+  await assertOrganizationOwner(userId, organizationId);
+
+  const existing = await loadIntegrationRow(organizationId, "kubernetes");
+  const existingSecrets = existing ? decryptRowSecrets(existing) : {};
+  const existingConfig = existing?.config ?? {};
+
+  const webhookSecret =
+    input?.rotateSecret || !existingSecrets.webhookSecret
+      ? generateKubernetesWebhookSecret()
+      : String(existingSecrets.webhookSecret);
+
+  const clusterName =
+    input?.clusterName?.trim() ||
+    (typeof existingConfig.clusterName === "string" ? existingConfig.clusterName.trim() : "") ||
+    "production";
+
+  const signozRow = await loadIntegrationRow(organizationId, "signoz");
+  const signozSecrets = signozRow ? decryptRowSecrets(signozRow) : {};
+  const ingestionKey =
+    typeof signozSecrets.ingestionKey === "string"
+      ? signozSecrets.ingestionKey.trim()
+      : process.env.SIGNOZ_INGESTION_KEY?.trim();
+
+  await saveIntegration(
+    userId,
+    organizationId,
+    "kubernetes",
+    {
+      clusterName,
+      lastEventAt: existingConfig.lastEventAt ?? null,
+      clusterMetadata: existingConfig.clusterMetadata ?? {},
+      helmInstalledAt: existingConfig.helmInstalledAt ?? new Date().toISOString(),
+    },
+    { webhookSecret },
+    "integration.kubernetes.onboard",
+  );
+
+  const plan = buildKubernetesOnboardingPlan({
+    organizationId,
+    clusterName,
+    webhookSecret,
+    signozOtlpEndpoint: process.env.SIGNOZ_OTLP_ENDPOINT?.trim(),
+    signozIngestionKey: ingestionKey,
+  });
+
+  return {
+    ...plan,
+    maskedWebhookSecret: maskSecret(webhookSecret),
+    configured: true,
+    source: "organization" as const,
+  };
+}
+
+export async function upsertKubernetesIntegration(
+  userId: string,
+  organizationId: string,
+  input: UpsertKubernetesInput,
+) {
+  await assertOrganizationOwner(userId, organizationId);
+
+  const existing = await loadIntegrationRow(organizationId, "kubernetes");
+  const existingSecrets = existing ? decryptRowSecrets(existing) : {};
+  const existingConfig = existing?.config ?? {};
+  const secrets = mergeSecrets(existingSecrets, {
+    webhookSecret: input.webhookSecret,
+  });
+
+  if (!secrets.webhookSecret) {
+    throw serviceError("BAD_REQUEST", "Kubernetes webhook secret is required");
+  }
+
+  const config = {
+    clusterName:
+      input.clusterName?.trim() ||
+      (typeof existingConfig.clusterName === "string" ? existingConfig.clusterName.trim() : "") ||
+      "production",
+    lastEventAt: existingConfig.lastEventAt ?? null,
+    clusterMetadata: existingConfig.clusterMetadata ?? {},
+    helmInstalledAt: existingConfig.helmInstalledAt ?? null,
+  };
+
+  await saveIntegration(userId, organizationId, "kubernetes", config, secrets, "integration.kubernetes.upsert");
 }
 
 export async function removeOrganizationIntegration(
@@ -456,6 +671,92 @@ export async function resolvePagerDutyRoutingKey(organizationId?: string | null)
   return process.env.PAGERDUTY_ROUTING_KEY?.trim() ?? null;
 }
 
+export async function resolveKubernetesWebhookSecret(organizationId?: string | null): Promise<string | null> {
+  if (organizationId) {
+    const row = await loadIntegrationRow(organizationId, "kubernetes");
+    if (row) {
+      const secrets = decryptRowSecrets(row);
+      const webhookSecret =
+        typeof secrets.webhookSecret === "string" ? secrets.webhookSecret.trim() : "";
+      if (webhookSecret) return webhookSecret;
+    }
+  }
+
+  return process.env.KUBERNETES_WEBHOOK_SECRET?.trim() ?? null;
+}
+
+export async function resolveOrganizationIdForKubernetesWebhook(secret: string) {
+  const rows = await db.select().from(organizationIntegrationsTable);
+  for (const row of rows) {
+    if (row.provider !== "kubernetes") continue;
+    const secrets = decryptRowSecrets(row);
+    const webhookSecret =
+      typeof secrets.webhookSecret === "string" ? secrets.webhookSecret.trim() : "";
+    if (webhookSecret && webhookSecret === secret.trim()) {
+      return row.organizationId;
+    }
+  }
+  return null;
+}
+
+export async function recordKubernetesClusterHeartbeat(input: {
+  organizationId: string;
+  metadata?: KubernetesClusterMetadata;
+}) {
+  const row = await loadIntegrationRow(input.organizationId, "kubernetes");
+  if (!row) return;
+
+  const config = row.config ?? {};
+  const existingMetadata = (config.clusterMetadata as KubernetesClusterMetadata | undefined) ?? {};
+  const merged = mergeKubernetesClusterMetadata(existingMetadata, input.metadata ?? {});
+
+  await db
+    .update(organizationIntegrationsTable)
+    .set({
+      config: {
+        ...config,
+        clusterMetadata: merged,
+        lastEventAt: new Date().toISOString(),
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(organizationIntegrationsTable.id, row.id));
+}
+
+export async function isKubernetesConfiguredForOrganization(organizationId?: string | null) {
+  const secret = await resolveKubernetesWebhookSecret(organizationId);
+  return Boolean(secret);
+}
+
+export async function resolveJiraConfig(organizationId?: string | null): Promise<JiraConfig | null> {
+  if (organizationId) {
+    const row = await loadIntegrationRow(organizationId, "jira");
+    if (row) {
+      const secrets = decryptRowSecrets(row);
+      const config = row.config ?? {};
+      const baseUrl = typeof config.baseUrl === "string" ? config.baseUrl.trim().replace(/\/+$/, "") : "";
+      const email = typeof secrets.email === "string" ? secrets.email.trim() : "";
+      const apiToken = typeof secrets.apiToken === "string" ? secrets.apiToken.trim() : "";
+      const projectKey = typeof config.projectKey === "string" ? config.projectKey.trim() : "";
+      const issueType =
+        typeof config.issueType === "string" && config.issueType.trim()
+          ? config.issueType.trim()
+          : "Bug";
+
+      if (baseUrl && email && apiToken && projectKey) {
+        return { baseUrl, email, apiToken, projectKey, issueType };
+      }
+    }
+  }
+
+  return getJiraConfigFromEnv();
+}
+
+export async function isJiraConfiguredForOrganization(organizationId?: string | null) {
+  const config = await resolveJiraConfig(organizationId);
+  return config !== null;
+}
+
 export async function isSignozConfiguredForOrganization(organizationId?: string | null) {
   const config = await resolveSignozConfig(organizationId);
   return config !== null;
@@ -577,6 +878,49 @@ export async function testGithubIntegration(
     return {
       ok: false,
       message: error instanceof Error ? error.message : "GitHub API request failed",
+    };
+  }
+}
+
+export async function testJiraIntegration(organizationId?: string | null) {
+  const config = await resolveJiraConfig(organizationId);
+  if (!config) {
+    return {
+      ok: false,
+      message: "Jira is not configured — connect in workspace settings or set JIRA_* env vars",
+    };
+  }
+
+  const token = Buffer.from(`${config.email}:${config.apiToken}`).toString("base64");
+
+  try {
+    const response = await fetch(`${config.baseUrl}/rest/api/3/myself`, {
+      headers: {
+        Authorization: `Basic ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const hint =
+        response.status === 401
+          ? " — check email and API token"
+          : response.status === 403
+            ? " — token lacks required permissions"
+            : "";
+      return { ok: false, message: `Jira API returned ${response.status}${hint}` };
+    }
+
+    const json = (await response.json()) as { displayName?: string; emailAddress?: string };
+    const who = json.displayName ?? json.emailAddress ?? config.email;
+    return {
+      ok: true,
+      message: `Connected as ${who} · project ${config.projectKey} · issue type ${config.issueType}`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Jira connection failed",
     };
   }
 }

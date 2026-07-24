@@ -2,6 +2,8 @@ import { isGithubApiConfigured } from "../github/api";
 import { isOpenAiConfigured } from "../ai/openai";
 import {
   isEbpfWebhookConfigured,
+  isFeatureFlagWebhookConfigured,
+  isCicdWebhookConfigured,
   isGithubWebhookConfigured,
   isKubernetesWebhookConfigured,
 } from "../integrations/config";
@@ -19,6 +21,8 @@ export type EvidenceSourceId =
   | "signoz_metrics"
   | "github_deploy"
   | "kubernetes_events"
+  | "feature_flags"
+  | "cicd_pipeline"
   | "ebpf_signals"
   | "github_api";
 
@@ -55,6 +59,20 @@ function hasDeployEvidence(timeline: TimelineEntryDto[], changeEvents: ChangeEve
   return changeEvents.some((event) => event.type === "commit" || event.type === "deployment");
 }
 
+function changedFilesInDeployEvidence(timeline: TimelineEntryDto[], changeEvents: ChangeEventRowDto[]) {
+  for (const entry of timeline) {
+    if (entry.kind !== "DEPLOY") continue;
+    const metadata = (entry.sourceRef ?? entry.metadata ?? {}) as Record<string, unknown>;
+    const files = metadata.changedFiles;
+    if (Array.isArray(files) && files.length > 0) return true;
+  }
+
+  return changeEvents.some((event) => {
+    const files = event.metadata.changedFiles;
+    return Array.isArray(files) && files.length > 0;
+  });
+}
+
 function hasKubernetesEvidence(timeline: TimelineEntryDto[], changeEvents: ChangeEventRowDto[]) {
   const kinds = timelineKinds(timeline);
   if (kinds.has("CHANGE") && timeline.some((e) => e.source?.includes("kubernetes"))) return true;
@@ -64,6 +82,55 @@ function hasKubernetesEvidence(timeline: TimelineEntryDto[], changeEvents: Chang
       (typeof event.metadata.kind === "string" &&
         ["Pod", "Deployment", "ReplicaSet"].includes(event.metadata.kind)),
   );
+}
+
+function hasCriticalKubernetesEvidence(timeline: TimelineEntryDto[], changeEvents: ChangeEventRowDto[]) {
+  for (const entry of timeline) {
+    if (!entry.source?.includes("kubernetes")) continue;
+    const metadata = (entry.sourceRef ?? entry.metadata ?? {}) as Record<string, unknown>;
+    if (metadata.severity === "critical") return true;
+    const reason = typeof metadata.reason === "string" ? metadata.reason : entry.title;
+    if (/oom|crashloop|failed|evicted|backoff/i.test(reason)) return true;
+  }
+
+  return changeEvents.some((event) => {
+    if (event.type !== "kubernetes") return false;
+    if (event.metadata.severity === "critical") return true;
+    const reason = typeof event.metadata.reason === "string" ? event.metadata.reason : "";
+    return /oom|crashloop|failed|evicted|backoff/i.test(reason);
+  });
+}
+
+function hasFeatureFlagEvidence(timeline: TimelineEntryDto[], changeEvents: ChangeEventRowDto[]) {
+  if (timeline.some((entry) => entry.source?.includes("feature-flag"))) return true;
+  return changeEvents.some((event) => event.type === "feature_flag");
+}
+
+function hasCicdEvidence(timeline: TimelineEntryDto[], changeEvents: ChangeEventRowDto[]) {
+  if (timeline.some((entry) => entry.source?.includes("cicd"))) return true;
+  return changeEvents.some((event) => event.type === "cicd");
+}
+
+function hasFailedCicdEvidence(timeline: TimelineEntryDto[], changeEvents: ChangeEventRowDto[]) {
+  for (const entry of timeline) {
+    if (!entry.source?.includes("cicd")) continue;
+    const metadata = (entry.sourceRef ?? entry.metadata ?? {}) as Record<string, unknown>;
+    if (metadata.status === "failure" || metadata.status === "retried") return true;
+  }
+  return changeEvents.some(
+    (event) =>
+      event.type === "cicd" &&
+      (event.metadata.status === "failure" || event.metadata.status === "retried"),
+  );
+}
+
+function hasObiEbpfEvidence(timeline: TimelineEntryDto[]) {
+  return timeline.some((entry) => {
+    if (entry.kind !== "EBPF") return false;
+    const metadata = (entry.sourceRef ?? entry.metadata ?? {}) as Record<string, unknown>;
+    const source = entry.source ?? "";
+    return metadata.collector === "obi" || source.includes("obi") || String(entry.title).includes("OBI");
+  });
 }
 
 function countTimelineKind(timeline: TimelineEntryDto[], kind: string) {
@@ -160,7 +227,9 @@ export function computeEvidenceCompleteness(input: {
           ? "collected"
           : "missing",
       detail: hasDeployEvidence(timeline, changeEvents)
-        ? "Deploy/commit correlated"
+        ? changedFilesInDeployEvidence(timeline, changeEvents)
+          ? "Deploy/commit correlated with GitHub diff"
+          : "Deploy/commit correlated"
         : isGithubWebhookConfigured()
           ? "Webhook configured — no push in incident window"
           : "Set GITHUB_WEBHOOK_SECRET or connect GitHub webhook",
@@ -184,8 +253,42 @@ export function computeEvidenceCompleteness(input: {
           ? "collected"
           : "missing",
       detail: hasKubernetesEvidence(timeline, changeEvents)
-        ? "Cluster change events correlated"
+        ? hasCriticalKubernetesEvidence(timeline, changeEvents)
+          ? "Critical K8s event correlated (OOM/restart/crash)"
+          : "Cluster change events correlated"
         : "K8s webhook configured — no events in window",
+    },
+    {
+      id: "feature_flags",
+      label: "Feature flag changes",
+      configured: isFeatureFlagWebhookConfigured(),
+      status: !isFeatureFlagWebhookConfigured()
+        ? "unavailable"
+        : hasFeatureFlagEvidence(timeline, changeEvents)
+          ? "collected"
+          : "missing",
+      detail: hasFeatureFlagEvidence(timeline, changeEvents)
+        ? "Flag enable/rollout correlated — possible non-deploy incident trigger"
+        : isFeatureFlagWebhookConfigured()
+          ? "Feature flag webhook configured — no toggles in window"
+          : "Set FEATURE_FLAG_WEBHOOK_SECRET for LaunchDarkly/Flagsmith events",
+    },
+    {
+      id: "cicd_pipeline",
+      label: "CI/CD pipeline",
+      configured: isCicdWebhookConfigured(),
+      status: !isCicdWebhookConfigured()
+        ? "unavailable"
+        : hasCicdEvidence(timeline, changeEvents)
+          ? "collected"
+          : "missing",
+      detail: hasCicdEvidence(timeline, changeEvents)
+        ? hasFailedCicdEvidence(timeline, changeEvents)
+          ? "Pipeline failure/retry correlated — build → test → deploy chain visible"
+          : "CI/CD stage events correlated to incident window"
+        : isCicdWebhookConfigured()
+          ? "CI/CD webhook configured — no pipeline events in window"
+          : "Set CICD_WEBHOOK_SECRET for GitHub Actions / Jenkins events",
     },
     {
       id: "ebpf_signals",
@@ -201,7 +304,9 @@ export function computeEvidenceCompleteness(input: {
               : "partial",
       detail:
         ebpfCount > 0
-          ? `${ebpfCount} eBPF timeline entries`
+          ? hasObiEbpfEvidence(timeline)
+            ? `${ebpfCount} eBPF entries — OBI kernel/network signals collected`
+            : `${ebpfCount} eBPF timeline entries`
           : isEbpfWebhookConfigured()
             ? "eBPF webhook configured — no kernel signals in window"
             : "Optional: OBI → SigNoz or POST /webhooks/ebpf",

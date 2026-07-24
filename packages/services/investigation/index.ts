@@ -43,14 +43,17 @@ import { buildRootCauseHypotheses } from "./root-cause-hypotheses";
 import { computeBlastRadius } from "./blast-radius";
 import { computeCrossServiceRca } from "./cross-service-rca";
 import { buildInvestigationKnowledgeGraph } from "./knowledge-graph";
+import { computeServiceMapDeepCorrelation } from "./service-map-deep-correlation";
 import { loadServiceGraphNeighborhood } from "./service-graph";
 import { findSimilarInvestigations, listInvestigations } from "./search";
 import { recordAuditEvent } from "../audit/log";
 import { buildPostmortemFilename, buildPostmortemMarkdown } from "./postmortem-export";
 import { suggestInvestigationFix } from "./fix-suggestion";
-import { parseEbpfEvent, type EbpfEventPayload } from "../ebpf/webhook-parser";
-import { parseGithubDeployEvent, type GithubPushPayload } from "../github/webhook-parser";
-import { parseKubernetesEvent, type KubernetesEventPayload } from "../kubernetes/webhook-parser";
+import { correlateCicdEvent } from "./cicd-event-correlation";
+import { correlateEbpfEvent } from "./ebpf-event-correlation";
+import { correlateFeatureFlagEvent } from "./feature-flag-correlation";
+import { correlateGithubDeployPush } from "./github-deploy-correlation";
+import { correlateKubernetesEvent } from "./kubernetes-event-correlation";
 import { resolveInvestigationOwnerUserId } from "./owner";
 import { resolveOrganizationForUser } from "../organization";
 import {
@@ -66,10 +69,23 @@ import {
   buildInvestigationEmbeddingText,
   persistInvestigationEmbedding,
 } from "./embeddings";
+import {
+  captureInvestigationMemory,
+  findRelevantInvestigationMemory,
+  findRelevantInvestigationMemoryForOrganization,
+  formatInvestigationMemoryForPrompt,
+} from "./investigation-memory";
 import { generateAndPersistInvestigationSummary } from "./llm-summary";
 import { enqueueInvestigationPipelineJob } from "./job-queue";
 import { kickInvestigationJobWorker } from "./worker";
+import {
+  getPipelineCacheStatus,
+  getValidPipelineCache,
+  invalidatePipelineCache,
+  recordPipelineCache,
+} from "./pipeline-cache";
 import { notifyInvestigationLifecycle } from "../integrations/incident-notifications";
+import { ensureTelemetryIntelligenceForInvestigation } from "../telemetry-intelligence/investigation-snapshot";
 import {
   buildPersistedSummary,
   buildServiceGraphFromSignoz,
@@ -154,10 +170,27 @@ class InvestigationService {
     return listInvestigations(ctx, limit, filters);
   }
 
+  async search(
+    userId: string,
+    query: string,
+    limit = 50,
+    filters?: Omit<import("./search").InvestigationListFilters, "query">,
+  ) {
+    const ctx = await loadInvestigationAccessContext(userId);
+    const { searchInvestigations } = await import("./search");
+    return searchInvestigations(ctx, query, limit, filters);
+  }
+
   async findSimilarCases(investigationId: string, userId: string, limit = 5) {
     const detail = await this.getById(investigationId, userId);
     if (!detail) return null;
     return findSimilarInvestigations(userId, investigationId, limit);
+  }
+
+  async findInvestigationMemory(investigationId: string, userId: string, limit = 5) {
+    const detail = await this.getById(investigationId, userId);
+    if (!detail) return null;
+    return findRelevantInvestigationMemory(userId, investigationId, limit);
   }
 
   async getById(id: string, userId: string): Promise<InvestigationDetail | null> {
@@ -280,10 +313,20 @@ class InvestigationService {
     ]);
 
     const primaryService = row.primaryService ?? row.affectedServices[0] ?? null;
-    const graph =
+    let graph =
       primaryService != null
         ? await loadServiceGraphNeighborhood(primaryService, 3)
         : { nodes: [], edges: [] };
+
+    if (primaryService && graph.edges.length === 0 && isSignozConfigured()) {
+      await buildServiceGraphFromSignoz(primaryService, {
+        organizationId: row.organizationId,
+        startMs: row.incidentWindowStart?.getTime(),
+        endMs: row.incidentWindowEnd?.getTime() ?? Date.now(),
+      });
+      graph = await loadServiceGraphNeighborhood(primaryService, 3);
+    }
+
     const nodes = graph.nodes;
     const edges = graph.edges;
 
@@ -389,6 +432,17 @@ class InvestigationService {
       citationRefByTimelineId,
     });
 
+    const serviceMapCorrelation = await computeServiceMapDeepCorrelation({
+      primaryService: row.primaryService,
+      organizationId: row.organizationId,
+      incidentWindowStart: row.incidentWindowStart,
+      incidentWindowEnd: row.incidentWindowEnd,
+      dependencies: { nodes, edges },
+      timeline: mappedTimeline,
+      runtimeSignals: mappedRuntimeSignals,
+      changeEvents: mappedChangeEvents,
+    });
+
     const rootCauseHypotheses = buildRootCauseHypotheses({
       timeline: mappedTimeline,
       changeEvents: mappedChangeEvents,
@@ -426,6 +480,13 @@ class InvestigationService {
       ebpfCollected: ebpfCount > 0,
     });
 
+    const investigationMemory = await findRelevantInvestigationMemory(userId, investigationId, 5);
+    const pipelineCache = await getPipelineCacheStatus(investigationId);
+
+    const telemetryIntelligence =
+      (row.telemetryIntelligence as InvestigationOsContext["telemetryIntelligence"]) ??
+      (await ensureTelemetryIntelligenceForInvestigation(row));
+
     return {
       investigation: {
         id: row.id,
@@ -455,6 +516,7 @@ class InvestigationService {
         collected: ebpfCount > 0,
         canTrigger: isSignozConfigured(),
       },
+      pipelineCache,
       evidenceCompleteness,
       structuredEvidence,
       evidenceCitations,
@@ -463,7 +525,10 @@ class InvestigationService {
       blastRadius,
       knowledgeGraph,
       crossServiceRca,
+      serviceMapCorrelation,
       remediationPlaybooks,
+      investigationMemory,
+      telemetryIntelligence,
     };
   }
 
@@ -554,9 +619,34 @@ class InvestigationService {
     return { investigationIds };
   }
 
-  async schedulePipeline(investigationId: string): Promise<void> {
-    await enqueueInvestigationPipelineJob(investigationId);
-    kickInvestigationJobWorker((id) => this.runPipeline(id));
+  async schedulePipeline(
+    investigationId: string,
+    options?: { bypassCache?: boolean },
+  ): Promise<{ scheduled: boolean; cacheHit?: boolean }> {
+    if (!options?.bypassCache) {
+      const cache = await getValidPipelineCache(investigationId);
+      if (cache.hit) {
+        logger.debug("Investigation pipeline cache hit — skipping enqueue", {
+          investigationId,
+          expiresAt: cache.expiresAt.toISOString(),
+        });
+        return { scheduled: false, cacheHit: true };
+      }
+    } else {
+      await invalidatePipelineCache(investigationId);
+    }
+
+    const enqueued = await enqueueInvestigationPipelineJob(investigationId);
+    if (enqueued) {
+      kickInvestigationJobWorker((id) => this.runPipeline(id));
+    }
+    return { scheduled: enqueued };
+  }
+
+  /** Force re-runs the evidence pipeline (bypasses cache). */
+  async refreshInvestigation(investigationId: string): Promise<void> {
+    await invalidatePipelineCache(investigationId);
+    await this.runPipeline(investigationId, { bypassCache: true });
   }
 
   private investigationCaseUrl(investigationId: string) {
@@ -586,8 +676,22 @@ class InvestigationService {
     });
   }
 
-  async runPipeline(investigationId: string): Promise<void> {
+  async runPipeline(
+    investigationId: string,
+    options?: { bypassCache?: boolean },
+  ): Promise<void> {
     try {
+      if (!options?.bypassCache) {
+        const cache = await getValidPipelineCache(investigationId);
+        if (cache.hit) {
+          logger.debug("Investigation pipeline cache hit — skipping recompute", {
+            investigationId,
+            cachedAt: cache.cachedAt.toISOString(),
+          });
+          return;
+        }
+      }
+
       const [row] = await db
         .select()
         .from(investigationsTable)
@@ -868,11 +972,19 @@ class InvestigationService {
         primaryService: row.primaryService,
       });
 
-      await generateAndPersistInvestigationSummary({
+      const memoryMatches = await findRelevantInvestigationMemoryForOrganization(
+        row.organizationId,
+        investigationId,
+        row,
+        3,
+      );
+
+      const llmResult = await generateAndPersistInvestigationSummary({
         investigationId,
         title: row.title,
         summary: summaryText,
         affectedServices: row.affectedServices,
+        investigationMemoryBlock: formatInvestigationMemoryForPrompt(memoryMatches),
         timeline: timelineRows.map((entry) => ({
           id: entry.id,
           kind: entry.kind,
@@ -895,9 +1007,9 @@ class InvestigationService {
         runtimeSignalCount: runtimeRows.length,
         structuredEvidenceBlock: formatStructuredEvidenceForPrompt(structuredForLlm),
         incidentNarrativeBlock: formatIncidentNarrativeForPrompt(narrativeForLlm),
-      }).then(async (llmResult) => {
-        if (!llmResult) return;
+      });
 
+      if (llmResult) {
         await insertTimelineEntry({
           investigationId,
           occurredAt: llmResult.generatedAt,
@@ -908,7 +1020,7 @@ class InvestigationService {
           sourceRef: { model: process.env.OPENAI_MODEL ?? "gpt-4o-mini" },
           sortOrder: sortOrder++,
         });
-      });
+      }
 
       await db
         .update(investigationsTable)
@@ -936,6 +1048,16 @@ class InvestigationService {
           affectedServices: row.affectedServices,
         }),
       );
+
+      await recordPipelineCache({
+        investigationId,
+        metadata: {
+          traceCount: traces.length,
+          logCount: logs.length,
+          timelineCount: timelineRows.length,
+          llmSummaryGenerated: Boolean(llmResult),
+        },
+      });
     } catch (err) {
       logger.error("Investigation pipeline failed", {
         investigationId,
@@ -953,111 +1075,23 @@ class InvestigationService {
     }
   }
 
-  async handleGithubWebhook(payload: GithubPushPayload): Promise<{ attachedInvestigationIds: string[] }> {
-    const deploy = parseGithubDeployEvent(payload);
+  async handleGithubWebhook(
+    payload: import("../github/webhook-parser").GithubPushPayload,
+    options?: { organizationId?: string | null },
+  ): Promise<import("./github-deploy-correlation").GithubDeployCorrelationResult> {
     const ownerUserId = await resolveInvestigationOwnerUserId();
-    const since = new Date(Date.now() - 6 * 60 * 60 * 1000);
 
-    const candidates = await db
-      .select()
-      .from(investigationsTable)
-      .where(
-        and(
-          gte(investigationsTable.createdAt, since),
-          ownerUserId
-            ? or(eq(investigationsTable.userId, ownerUserId), isNull(investigationsTable.userId))
-            : undefined,
-        ),
-      )
-      .orderBy(desc(investigationsTable.createdAt));
-
-    const attachedInvestigationIds: string[] = [];
-
-    const attachDeploy = async (row: SelectInvestigation) => {
-      const timelineRows = await db
-        .select()
-        .from(investigationTimelineEntriesTable)
-        .where(eq(investigationTimelineEntriesTable.investigationId, row.id));
-
-      const maxSort = timelineRows.reduce((max, entry) => Math.max(max, entry.sortOrder ?? 0), 0);
-
-      await insertTimelineEntry({
-        investigationId: row.id,
-        occurredAt: deploy.occurredAt,
-        kind: "DEPLOY",
-        title: deploy.title,
-        detail: deploy.detail,
-        source: "github-webhook",
-        sourceRef: {
-          repo: deploy.repo,
-          branch: deploy.branch,
-          sha: deploy.sha,
-          author: deploy.author,
-        },
-        sortOrder: maxSort + 1,
-        metadata: { repo: deploy.repo, sha: deploy.sha, branch: deploy.branch },
-      });
-
-      await persistChangeEvent({
-        investigationId: row.id,
-        type: "commit",
-        service: row.primaryService ?? row.affectedServices[0] ?? deploy.repo,
-        author: deploy.author,
-        occurredAt: deploy.occurredAt,
-        metadata: {
-          repo: deploy.repo,
-          branch: deploy.branch,
-          sha: deploy.sha,
-          message: deploy.message,
-        },
-      });
-
-      const context = (row.investigationContext as InvestigationContext | null) ?? {
-        summary: row.title,
-        evidence: [],
-        affectedServices: row.affectedServices ?? [],
-        incidentWindow: {
-          start: row.incidentWindowStart?.toISOString() ?? new Date().toISOString(),
-          end: row.incidentWindowEnd?.toISOString() ?? new Date().toISOString(),
-        },
-        signozConfigured: isSignozConfigured(),
-        notes: [],
-      };
-
-      context.evidence.push({
-        id: `deploy-${deploy.sha}`,
-        kind: "DEPLOY",
-        title: deploy.title,
-        detail: deploy.detail,
-        occurredAt: deploy.occurredAt.toISOString(),
-        source: "github-webhook",
-      });
-      context.notes = [...(context.notes ?? []), "Deploy event correlated from GitHub push webhook."];
-
-      await db
-        .update(investigationsTable)
-        .set({ investigationContext: context, updatedAt: new Date() })
-        .where(eq(investigationsTable.id, row.id));
-
-      attachedInvestigationIds.push(row.id);
-    };
-
-    for (const row of candidates) {
-      const anchor = row.incidentWindowStart?.getTime() ?? row.createdAt.getTime();
-      const deployMs = deploy.occurredAt.getTime();
-      if (deployMs >= anchor - 45 * 60 * 1000 && deployMs <= anchor + 20 * 60 * 1000) {
-        await attachDeploy(row);
-      }
-    }
-
-    if (attachedInvestigationIds.length === 0 && candidates[0]) {
-      await attachDeploy(candidates[0]);
-    }
-
-    return { attachedInvestigationIds };
+    return correlateGithubDeployPush({
+      payload,
+      organizationId: options?.organizationId,
+      ownerUserId,
+      refreshPipeline: async (investigationId) => {
+        await this.schedulePipeline(investigationId, { bypassCache: true });
+      },
+    });
   }
 
-  private async findRecentInvestigationCandidates() {
+  private async findRecentInvestigationCandidates(organizationId?: string | null) {
     const ownerUserId = await resolveInvestigationOwnerUserId();
     const since = new Date(Date.now() - 6 * 60 * 60 * 1000);
 
@@ -1067,9 +1101,11 @@ class InvestigationService {
       .where(
         and(
           gte(investigationsTable.createdAt, since),
-          ownerUserId
-            ? or(eq(investigationsTable.userId, ownerUserId), isNull(investigationsTable.userId))
-            : undefined,
+          organizationId
+            ? eq(investigationsTable.organizationId, organizationId)
+            : ownerUserId
+              ? or(eq(investigationsTable.userId, ownerUserId), isNull(investigationsTable.userId))
+              : undefined,
         ),
       )
       .orderBy(desc(investigationsTable.createdAt));
@@ -1170,51 +1206,66 @@ class InvestigationService {
   }
 
   async handleKubernetesWebhook(
-    payload: KubernetesEventPayload,
-  ): Promise<{ attachedInvestigationIds: string[] }> {
-    const event = parseKubernetesEvent(payload);
+    payload: import("../kubernetes/webhook-parser").KubernetesEventPayload,
+    options?: { organizationId?: string | null },
+  ): Promise<import("./kubernetes-event-correlation").KubernetesEventCorrelationResult> {
+    const ownerUserId = await resolveInvestigationOwnerUserId();
 
-    return this.attachChangeToInvestigations({
-      occurredAt: event.occurredAt,
-      kind: "CHANGE",
-      title: event.title,
-      detail: event.detail,
-      source: "kubernetes-webhook",
-      sourceRef: {
-        kind: event.kind,
-        name: event.name,
-        namespace: event.namespace,
-        reason: event.reason,
+    return correlateKubernetesEvent({
+      payload,
+      organizationId: options?.organizationId,
+      ownerUserId,
+      refreshPipeline: async (investigationId) => {
+        await this.schedulePipeline(investigationId, { bypassCache: true });
       },
-      changeType: "kubernetes",
-      service: event.service,
-      changeMetadata: {
-        kind: event.kind,
-        name: event.name,
-        namespace: event.namespace,
-        reason: event.reason,
-        revision: event.revision,
-      },
-      evidenceKind: "CHANGE",
     });
   }
 
-  async handleEbpfWebhook(payload: EbpfEventPayload): Promise<{ attachedInvestigationIds: string[] }> {
-    const event = parseEbpfEvent(payload);
+  async handleEbpfWebhook(
+    payload: import("../ebpf/webhook-parser").EbpfEventPayload,
+    options?: { organizationId?: string | null },
+  ): Promise<import("./ebpf-event-correlation").EbpfEventCorrelationResult> {
+    const ownerUserId = await resolveInvestigationOwnerUserId();
 
-    return this.attachChangeToInvestigations({
-      occurredAt: event.occurredAt,
-      kind: "EBPF",
-      title: event.title,
-      detail: event.detail,
-      source: "ebpf-webhook",
-      sourceRef: event.metadata,
-      changeType: "config",
-      service: event.service,
-      changeMetadata: event.metadata,
-      evidenceKind: "EBPF",
-      windowBeforeMs: 60 * 60 * 1000,
-      windowAfterMs: 30 * 60 * 1000,
+    return correlateEbpfEvent({
+      payload,
+      organizationId: options?.organizationId,
+      ownerUserId,
+      refreshPipeline: async (investigationId) => {
+        await this.schedulePipeline(investigationId, { bypassCache: true });
+      },
+    });
+  }
+
+  async handleFeatureFlagWebhook(
+    payload: import("../feature-flags/webhook-parser").FeatureFlagEventPayload,
+    options?: { organizationId?: string | null },
+  ): Promise<import("./feature-flag-correlation").FeatureFlagCorrelationResult> {
+    const ownerUserId = await resolveInvestigationOwnerUserId();
+
+    return correlateFeatureFlagEvent({
+      payload,
+      organizationId: options?.organizationId,
+      ownerUserId,
+      refreshPipeline: async (investigationId) => {
+        await this.schedulePipeline(investigationId, { bypassCache: true });
+      },
+    });
+  }
+
+  async handleCicdWebhook(
+    payload: import("../cicd/webhook-parser").CicdEventPayload,
+    options?: { organizationId?: string | null },
+  ): Promise<import("./cicd-event-correlation").CicdEventCorrelationResult> {
+    const ownerUserId = await resolveInvestigationOwnerUserId();
+
+    return correlateCicdEvent({
+      payload,
+      organizationId: options?.organizationId,
+      ownerUserId,
+      refreshPipeline: async (investigationId) => {
+        await this.schedulePipeline(investigationId, { bypassCache: true });
+      },
     });
   }
 
@@ -1401,6 +1452,92 @@ class InvestigationService {
     };
   }
 
+  async createJiraIssue(investigationId: string, userId: string) {
+    const context = await this.getOsContext(investigationId, userId);
+    if (!context) return null;
+
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || !(await this.canUserAccess(row, userId))) return null;
+
+    const { resolveJiraConfig } = await import("../organization/integrations");
+    const { createJiraIssue: createIssue } = await import("../jira/client");
+    const { buildJiraIssueDraft } = await import("../jira/issue-builder");
+
+    const jiraConfig = await resolveJiraConfig(row.organizationId);
+    if (!jiraConfig) {
+      throw new Error(
+        "Jira is not configured — connect in workspace settings or set JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY",
+      );
+    }
+
+    const notes = (await this.listNotes(investigationId, userId)) ?? [];
+    const pinpoint = row.status === "ready" ? await this.getPinpoint(investigationId, userId) : null;
+    const exportedAt = new Date().toISOString();
+    const shortId = shortInvestigationId(row.id);
+
+    const draft = buildJiraIssueDraft({
+      shortId,
+      title: row.title,
+      affectedServices: row.affectedServices,
+      createdAt: row.createdAt.toISOString(),
+      context,
+      notes,
+      pinpoint,
+      exportedAt,
+    });
+
+    const created = await createIssue(draft, jiraConfig);
+
+    const timelineRows = await db
+      .select()
+      .from(investigationTimelineEntriesTable)
+      .where(eq(investigationTimelineEntriesTable.investigationId, investigationId));
+    const maxSort = timelineRows.reduce((max, entry) => Math.max(max, entry.sortOrder ?? 0), 0);
+
+    await insertTimelineEntry({
+      investigationId,
+      occurredAt: new Date(),
+      kind: "CHANGE",
+      title: `Jira issue created · ${created.issueKey}`,
+      detail: draft.summary,
+      source: "jira-integration",
+      sourceRef: {
+        issueKey: created.issueKey,
+        issueUrl: created.issueUrl,
+        priority: draft.priority,
+      },
+      sortOrder: maxSort + 1,
+      metadata: {
+        issueKey: created.issueKey,
+        issueUrl: created.issueUrl,
+      },
+    });
+
+    await recordAuditEvent({
+      actorUserId: userId,
+      action: "investigation.jira.created",
+      resourceType: "investigation",
+      resourceId: investigationId,
+      metadata: {
+        shortId,
+        issueKey: created.issueKey,
+        issueUrl: created.issueUrl,
+      },
+    });
+
+    return {
+      ...created,
+      summary: draft.summary,
+      priority: draft.priority,
+      createdAt: exportedAt,
+    };
+  }
+
   async regenerateSummary(investigationId: string, userId: string) {
     const context = await this.getOsContext(investigationId, userId);
     if (!context) return null;
@@ -1440,6 +1577,7 @@ class InvestigationService {
       runtimeSignalCount: context.runtimeSignals.length,
       structuredEvidenceBlock: formatStructuredEvidenceForPrompt(context.structuredEvidence),
       incidentNarrativeBlock: formatIncidentNarrativeForPrompt(context.incidentNarrative),
+      investigationMemoryBlock: formatInvestigationMemoryForPrompt(context.investigationMemory),
     });
 
     if (result) {
@@ -1486,6 +1624,11 @@ class InvestigationService {
       });
 
       if (caseStatus === "resolved") {
+        await captureInvestigationMemory({
+          investigationId,
+          ownerUserId: userId,
+        });
+
         await notifyInvestigationLifecycle({
           kind: "case_resolved",
           shortId: shortInvestigationId(updated.id),
@@ -1500,6 +1643,24 @@ class InvestigationService {
     }
 
     return updated ? toListItem(updated) : null;
+  }
+
+  async refreshPipeline(investigationId: string, userId: string) {
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || !(await this.canUserAccess(row, userId))) return null;
+
+    const result = await this.schedulePipeline(investigationId, { bypassCache: true });
+    return {
+      scheduled: result.scheduled,
+      message: result.scheduled
+        ? "Pipeline refresh queued — evidence and analysis will update shortly."
+        : "A pipeline job is already running for this investigation.",
+    };
   }
 
   async triggerEbpfEnrichment(investigationId: string, userId: string) {
@@ -1578,10 +1739,188 @@ class InvestigationService {
     };
   }
 
+  /** Feature #57 — push a custom operational event via SDK or plugin webhook. */
+  async handleSdkCustomEvent(
+    payload: {
+      title: string;
+      detail: string;
+      service?: string;
+      occurredAt?: string;
+      source?: string;
+      metadata?: Record<string, unknown>;
+      investigationId?: string;
+    },
+    ctx: { organizationId: string; source: string },
+  ) {
+    const occurredAt = payload.occurredAt ? new Date(payload.occurredAt) : new Date();
+    const source = payload.source ?? ctx.source;
+
+    if (payload.investigationId) {
+      const attached = await this.attachSdkTimelineEvent(payload.investigationId, {
+        title: payload.title,
+        detail: payload.detail,
+        kind: "CHANGE",
+        occurredAt: occurredAt.toISOString(),
+        source,
+        metadata: payload.metadata,
+      }, ctx.organizationId);
+
+      return {
+        attachedInvestigationIds: attached ? [payload.investigationId] : [],
+        message: attached ? "Timeline event attached to specified investigation" : "Investigation not found",
+      };
+    }
+
+    const result = await this.attachChangeToInvestigations({
+      occurredAt,
+      kind: "CHANGE",
+      title: payload.title,
+      detail: payload.detail,
+      source,
+      sourceRef: { sdk: true, metadata: payload.metadata ?? {} },
+      changeType: "config",
+      service: payload.service,
+      changeMetadata: {
+        ...(payload.metadata ?? {}),
+        sdkSource: source,
+      },
+      evidenceKind: "CHANGE",
+    });
+
+    return {
+      attachedInvestigationIds: result.attachedInvestigationIds,
+      message:
+        result.attachedInvestigationIds.length > 0
+          ? `Attached to ${result.attachedInvestigationIds.length} investigation(s)`
+          : "No active investigation matched the event window",
+    };
+  }
+
+  /** Feature #57 — create a timeline entry on a specific investigation. */
+  async attachSdkTimelineEvent(
+    investigationId: string,
+    payload: {
+      title: string;
+      detail: string;
+      kind?: "ALERT" | "DEPLOY" | "METRIC" | "LOG" | "TRACE" | "CHANGE" | "EBPF" | "AI";
+      occurredAt?: string;
+      source?: string;
+      metadata?: Record<string, unknown>;
+      sourceRef?: Record<string, unknown>;
+    },
+    organizationId: string,
+  ) {
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || row.organizationId !== organizationId) return null;
+
+    const timelineRows = await db
+      .select()
+      .from(investigationTimelineEntriesTable)
+      .where(eq(investigationTimelineEntriesTable.investigationId, investigationId));
+
+    const maxSort = timelineRows.reduce((max, entry) => Math.max(max, entry.sortOrder ?? 0), 0);
+    const occurredAt = payload.occurredAt ? new Date(payload.occurredAt) : new Date();
+
+    const entry = await insertTimelineEntry({
+      investigationId,
+      occurredAt,
+      kind: payload.kind ?? "CHANGE",
+      title: payload.title,
+      detail: payload.detail,
+      source: payload.source ?? "sdk",
+      sourceRef: payload.sourceRef ?? { sdk: true },
+      sortOrder: maxSort + 1,
+      metadata: payload.metadata,
+    });
+
+    const context = (row.investigationContext as InvestigationContext | null) ?? {
+      summary: row.title,
+      evidence: [],
+      affectedServices: row.affectedServices ?? [],
+      incidentWindow: {
+        start: row.incidentWindowStart?.toISOString() ?? new Date().toISOString(),
+        end: row.incidentWindowEnd?.toISOString() ?? new Date().toISOString(),
+      },
+      signozConfigured: isSignozConfigured(),
+      notes: [],
+    };
+
+    context.evidence.push({
+      id: entry?.id ?? `sdk-${Date.now()}`,
+      kind: payload.kind === "EBPF" ? "EBPF" : payload.kind === "DEPLOY" ? "DEPLOY" : "CHANGE",
+      title: payload.title,
+      detail: payload.detail,
+      occurredAt: occurredAt.toISOString(),
+      source: payload.source ?? "sdk",
+    });
+    context.notes = [...(context.notes ?? []), `SDK timeline event: ${payload.title}`];
+
+    await db
+      .update(investigationsTable)
+      .set({ investigationContext: context, updatedAt: new Date() })
+      .where(eq(investigationsTable.id, investigationId));
+
+    return entry;
+  }
+
+  /** Feature #57 — attach structured metadata to an investigation context. */
+  async attachSdkMetadata(
+    investigationId: string,
+    payload: { metadata: Record<string, unknown>; appendNote?: string },
+    organizationId: string,
+  ) {
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || row.organizationId !== organizationId) return null;
+
+    const context = (row.investigationContext as InvestigationContext | null) ?? {
+      summary: row.title,
+      evidence: [],
+      affectedServices: row.affectedServices ?? [],
+      incidentWindow: {
+        start: row.incidentWindowStart?.toISOString() ?? new Date().toISOString(),
+        end: row.incidentWindowEnd?.toISOString() ?? new Date().toISOString(),
+      },
+      signozConfigured: isSignozConfigured(),
+      notes: [],
+    };
+
+    const sdkMetadata = {
+      ...(((context as InvestigationContext & { sdkMetadata?: Record<string, unknown> }).sdkMetadata) ?? {}),
+      ...payload.metadata,
+    };
+
+    if (payload.appendNote) {
+      context.notes = [...(context.notes ?? []), payload.appendNote];
+    }
+
+    await db
+      .update(investigationsTable)
+      .set({
+        investigationContext: {
+          ...context,
+          sdkMetadata,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(investigationsTable.id, investigationId));
+
+    return { investigationId, metadataKeys: Object.keys(payload.metadata) };
+  }
+
   async rerunAllPipelines(): Promise<number> {
     const rows = await db.select({ id: investigationsTable.id }).from(investigationsTable);
     for (const row of rows) {
-      await this.schedulePipeline(row.id);
+      await this.schedulePipeline(row.id, { bypassCache: true });
     }
     return rows.length;
   }

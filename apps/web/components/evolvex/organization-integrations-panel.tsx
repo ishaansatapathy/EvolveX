@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { trpc } from "~/trpc/client";
 
 type IntegrationSummary = {
-  provider: "signoz" | "github" | "slack" | "pagerduty";
+  provider: "signoz" | "github" | "slack" | "pagerduty" | "jira";
   configured: boolean;
   source: "organization" | "environment";
   config: Record<string, unknown>;
@@ -25,6 +25,7 @@ const PROVIDER_LABELS: Record<IntegrationSummary["provider"], string> = {
   github: "GitHub",
   slack: "Slack",
   pagerduty: "PagerDuty",
+  jira: "Jira",
 };
 
 export function OrganizationIntegrationsPanel({
@@ -63,6 +64,12 @@ export function OrganizationIntegrationsPanel({
       await utils.integrations.health.invalidate();
     },
   });
+  const upsertJira = trpc.organizations.integrations.upsertJira.useMutation({
+    onSuccess: async () => {
+      await utils.organizations.integrations.list.invalidate();
+      await utils.integrations.health.invalidate();
+    },
+  });
   const removeIntegration = trpc.organizations.integrations.remove.useMutation({
     onSuccess: async () => {
       await utils.organizations.integrations.list.invalidate();
@@ -78,6 +85,10 @@ export function OrganizationIntegrationsPanel({
     { organizationId },
     { enabled: false },
   );
+  const jiraTest = trpc.organizations.integrations.testJira.useQuery(
+    { organizationId },
+    { enabled: false },
+  );
 
   const [signozForm, setSignozForm] = useState({
     cloudUrl: "",
@@ -90,6 +101,13 @@ export function OrganizationIntegrationsPanel({
   const [githubForm, setGithubForm] = useState({ token: "", webhookSecret: "" });
   const [slackForm, setSlackForm] = useState({ webhookUrl: "" });
   const [pagerDutyForm, setPagerDutyForm] = useState({ routingKey: "" });
+  const [jiraForm, setJiraForm] = useState({
+    baseUrl: "",
+    email: "",
+    apiToken: "",
+    projectKey: "",
+    issueType: "",
+  });
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const [copiedWebhook, setCopiedWebhook] = useState(false);
@@ -123,11 +141,15 @@ export function OrganizationIntegrationsPanel({
     );
   }
 
-  async function handleTest(provider: "signoz" | "github") {
+  async function handleTest(provider: "signoz" | "github" | "jira") {
     if (provider === "github") setGithubTesting(true);
     try {
       const result =
-        provider === "signoz" ? await signozTest.refetch() : await githubTest.refetch();
+        provider === "signoz"
+          ? await signozTest.refetch()
+          : provider === "github"
+            ? await githubTest.refetch()
+            : await jiraTest.refetch();
       const tone = result.data?.ok ? "success" : "error";
       const text = result.data?.message ?? "Connection test failed";
       setMessageTone(tone);
@@ -455,6 +477,107 @@ export function OrganizationIntegrationsPanel({
                 onClick={async () => {
                   await removeIntegration.mutateAsync({ organizationId, provider: "pagerduty" });
                   setMessage("PagerDuty workspace credentials removed.");
+                }}
+              >
+                Remove vault
+              </button>
+            ) : null}
+          </div>
+        </article>
+
+        <article className="evx-dash__settings-card">
+          <div className="evx-dash__org-integration-head">
+            <p className="evx-dash__settings-label">{PROVIDER_LABELS.jira}</p>
+            {renderSourceBadge(byProvider.get("jira"))}
+          </div>
+          <p className="evx-dash__stat-note" style={{ marginBottom: "0.65rem" }}>
+            Create Jira issues from investigations with root cause, timeline, and fix context.
+          </p>
+          <label className="evx-dash__org-field">
+            <span>Base URL</span>
+            <input
+              type="url"
+              placeholder="https://your-org.atlassian.net"
+              value={jiraForm.baseUrl || String(byProvider.get("jira")?.config.baseUrl ?? "")}
+              onChange={(event) => setJiraForm((prev) => ({ ...prev, baseUrl: event.target.value }))}
+            />
+          </label>
+          <label className="evx-dash__org-field">
+            <span>
+              Email{" "}
+              {byProvider.get("jira")?.maskedSecrets.email
+                ? `(${byProvider.get("jira")?.maskedSecrets.email})`
+                : ""}
+            </span>
+            <input
+              type="email"
+              placeholder="you@company.com"
+              value={jiraForm.email}
+              onChange={(event) => setJiraForm((prev) => ({ ...prev, email: event.target.value }))}
+            />
+          </label>
+          <label className="evx-dash__org-field">
+            <span>
+              API token{" "}
+              {byProvider.get("jira")?.maskedSecrets.apiToken
+                ? `(${byProvider.get("jira")?.maskedSecrets.apiToken})`
+                : ""}
+            </span>
+            <input
+              type="password"
+              placeholder="Leave blank to keep existing"
+              value={jiraForm.apiToken}
+              onChange={(event) => setJiraForm((prev) => ({ ...prev, apiToken: event.target.value }))}
+            />
+          </label>
+          <label className="evx-dash__org-field">
+            <span>Project key</span>
+            <input
+              type="text"
+              placeholder="ENG"
+              value={jiraForm.projectKey || String(byProvider.get("jira")?.config.projectKey ?? "")}
+              onChange={(event) => setJiraForm((prev) => ({ ...prev, projectKey: event.target.value }))}
+            />
+          </label>
+          <label className="evx-dash__org-field">
+            <span>Issue type</span>
+            <input
+              type="text"
+              placeholder="Bug"
+              value={jiraForm.issueType || String(byProvider.get("jira")?.config.issueType ?? "Bug")}
+              onChange={(event) => setJiraForm((prev) => ({ ...prev, issueType: event.target.value }))}
+            />
+          </label>
+          <div className="evx-dash__cause-actions">
+            <button
+              type="button"
+              className="evx-dash__btn-primary"
+              disabled={upsertJira.isPending}
+              onClick={async () => {
+                await upsertJira.mutateAsync({
+                  organizationId,
+                  baseUrl: jiraForm.baseUrl || String(byProvider.get("jira")?.config.baseUrl ?? ""),
+                  email: jiraForm.email || undefined,
+                  apiToken: jiraForm.apiToken || undefined,
+                  projectKey: jiraForm.projectKey || String(byProvider.get("jira")?.config.projectKey ?? ""),
+                  issueType: jiraForm.issueType || undefined,
+                });
+                setJiraForm((prev) => ({ ...prev, email: "", apiToken: "" }));
+                notify("Jira credentials saved to workspace vault.");
+              }}
+            >
+              Save Jira
+            </button>
+            <button type="button" className="evx-dash__btn-ghost" onClick={() => handleTest("jira")}>
+              Test
+            </button>
+            {byProvider.get("jira")?.source === "organization" ? (
+              <button
+                type="button"
+                className="evx-dash__btn-ghost"
+                onClick={async () => {
+                  await removeIntegration.mutateAsync({ organizationId, provider: "jira" });
+                  notify("Jira workspace credentials removed — .env fallback will apply.", "info");
                 }}
               >
                 Remove vault

@@ -4,6 +4,9 @@ import InvestigationService from "@repo/services/investigation";
 import { ebpfEventSchema } from "@repo/services/ebpf/webhook-parser";
 import { requireWebhookSecret } from "@repo/services/webhooks/verify";
 
+import { resolveInvestigationOwnerUserId } from "@repo/services/investigation/owner";
+import { resolveOrganizationForUser } from "@repo/services/organization";
+
 const investigationService = new InvestigationService();
 
 export const ebpfWebhookRouter = express.Router();
@@ -27,7 +30,9 @@ ebpfWebhookRouter.post("/", async (req, res) => {
   }
 
   try {
-    const result = await investigationService.handleEbpfWebhook(parsed.data);
+    const ownerUserId = await resolveInvestigationOwnerUserId();
+    const organizationId = await resolveOrganizationForUser(ownerUserId);
+    const result = await investigationService.handleEbpfWebhook(parsed.data, { organizationId });
     logger.info("eBPF webhook processed", result);
     return res.status(200).json({ ok: true, ...result });
   } catch (err) {

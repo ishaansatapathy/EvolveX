@@ -16,6 +16,11 @@ import { signozWebhookRouter } from "./routes/signoz-webhook";
 import { githubWebhookRouter } from "./routes/github-webhook";
 import { kubernetesWebhookRouter } from "./routes/kubernetes-webhook";
 import { ebpfWebhookRouter } from "./routes/ebpf-webhook";
+import { featureFlagWebhookRouter } from "./routes/feature-flag-webhook";
+import { cicdWebhookRouter } from "./routes/cicd-webhook";
+import { sdkApiRouter } from "./routes/sdk-api";
+import { pluginWebhookRouter } from "./routes/plugin-webhook";
+import { telemetryIntelligenceRouter } from "./routes/telemetry-intelligence";
 
 export const app = express();
 
@@ -96,6 +101,11 @@ app.use("/webhooks/signoz", express.json({ limit: "512kb" }), signozWebhookRoute
 app.use("/webhooks/github", githubWebhookRouter);
 app.use("/webhooks/kubernetes", express.json({ limit: "512kb" }), kubernetesWebhookRouter);
 app.use("/webhooks/ebpf", express.json({ limit: "512kb" }), ebpfWebhookRouter);
+app.use("/webhooks/feature-flags", express.json({ limit: "512kb" }), featureFlagWebhookRouter);
+app.use("/webhooks/cicd", express.json({ limit: "512kb" }), cicdWebhookRouter);
+app.use("/webhooks/plugins", express.json({ limit: "512kb" }), pluginWebhookRouter);
+app.use("/api/v1/sdk", express.json({ limit: "256kb" }), sdkApiRouter);
+app.use("/telemetry-intelligence", telemetryIntelligenceRouter);
 
 app.use(requireTrustedOrigin);
 app.use(cookieParser());
@@ -119,6 +129,12 @@ app.get("/health", async (_req, res) => {
     return res.json({
       message: "Evolvex API is healthy",
       healthy: true,
+      environment: process.env.NODE_ENV ?? "development",
+      commit:
+        process.env.RAILWAY_GIT_COMMIT_SHA ??
+        process.env.VERCEL_GIT_COMMIT_SHA ??
+        process.env.GIT_COMMIT ??
+        null,
       ...(checkDatabase ? { database: "ok" as const } : {}),
     });
   } catch (error) {

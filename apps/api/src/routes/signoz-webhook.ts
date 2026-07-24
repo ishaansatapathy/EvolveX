@@ -2,10 +2,14 @@ import express from "express";
 import type { Request, Response } from "express";
 import { logger } from "@repo/logger";
 import InvestigationService from "@repo/services/investigation";
+import { createTelemetryIntelligenceOrchestrator } from "@repo/services/telemetry-intelligence";
 import { getSignozConfig } from "@repo/services/signoz-env";
 import { signozWebhookPayloadSchema } from "@repo/services/signoz/types";
 
 const investigationService = new InvestigationService();
+const telemetryIntelligence = createTelemetryIntelligenceOrchestrator((payload) =>
+  investigationService.handleSignozWebhook(payload),
+);
 
 const webhookHits = new Map<string, { count: number; resetAt: number }>();
 const WEBHOOK_RATE_WINDOW_MS = 60_000;
@@ -77,7 +81,7 @@ signozWebhookRouter.post("/", async (req, res) => {
   }
 
   try {
-    const result = await investigationService.handleSignozWebhook(parsed.data);
+    const result = await telemetryIntelligence.handleSignozWebhook(parsed.data);
     logger.info("SigNoz webhook processed", {
       alertCount: parsed.data.alerts.length,
       status: parsed.data.status,

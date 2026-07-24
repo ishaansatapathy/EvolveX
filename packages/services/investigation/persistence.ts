@@ -153,7 +153,7 @@ export async function persistRuntimeSignalsFromTraces(input: {
 
 export async function persistChangeEvent(input: {
   investigationId: string;
-  type: "deployment" | "commit" | "config" | "terraform" | "kubernetes";
+  type: "deployment" | "commit" | "config" | "terraform" | "kubernetes" | "feature_flag" | "cicd";
   service?: string;
   author?: string;
   occurredAt: Date;

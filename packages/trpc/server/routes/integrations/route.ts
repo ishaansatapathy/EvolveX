@@ -8,6 +8,8 @@ import { ensureUserOrganization } from "@repo/services/organization";
 import {
   isGithubConfiguredForOrganization,
   isGithubWebhookConfiguredForOrganization,
+  isJiraConfiguredForOrganization,
+  isKubernetesConfiguredForOrganization,
   isSignozConfiguredForOrganization,
   resolvePagerDutyRoutingKey,
   resolveSlackWebhookUrl,
@@ -72,13 +74,15 @@ export const integrationsRouter = router({
       }
 
       const organization = await ensureUserOrganization(ctx.user.id);
-      const [orgSignozConfigured, orgGithubConfigured, orgGithubWebhookConfigured, slackWebhook, pagerDutyKey, orgHasVault] =
+      const [orgSignozConfigured, orgGithubConfigured, orgGithubWebhookConfigured, slackWebhook, pagerDutyKey, orgJiraConfigured, orgKubernetesConfigured, orgHasVault] =
         await Promise.all([
           isSignozConfiguredForOrganization(organization.id),
           isGithubConfiguredForOrganization(organization.id),
           isGithubWebhookConfiguredForOrganization(organization.id),
           resolveSlackWebhookUrl(organization.id),
           resolvePagerDutyRoutingKey(organization.id),
+          isJiraConfiguredForOrganization(organization.id),
+          isKubernetesConfiguredForOrganization(organization.id),
           hasOrganizationIntegrations(organization.id),
         ]);
 
@@ -89,6 +93,8 @@ export const integrationsRouter = router({
         orgGithubWebhookConfigured,
         orgSlackConfigured: Boolean(slackWebhook),
         orgPagerDutyConfigured: Boolean(pagerDutyKey),
+        orgJiraConfigured,
+        orgKubernetesConfigured,
         orgSource: orgHasVault ? "organization" : "environment",
       });
     }),

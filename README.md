@@ -17,8 +17,30 @@ For **OpenTelemetry eBPF Instrumentation (OBI)** setup, see [docs/EBPF-OBI.md](.
 - Node.js 20+
 - pnpm 9+
 - **Neon Postgres** (recommended) or Docker for local PostgreSQL
-- SigNoz Cloud account
+- Docker (for self-hosted SigNoz via Foundry)
+- [foundryctl](https://github.com/SigNoz/foundry) (SigNoz Foundry CLI)
 - OpenAI API key (optional — for LLM summaries)
+
+## Reproducible SigNoz deployment (hackathon requirement)
+
+This repo includes `casting.yaml` and `casting.yaml.lock` at the repo root. Judges can reproduce the self-hosted SigNoz stack with Foundry:
+
+```bash
+# Install foundryctl: https://github.com/SigNoz/foundry#installation
+foundryctl cast -f casting.yaml
+```
+
+SigNoz UI: http://localhost:8080 · OTLP: http://localhost:4318
+
+Then point Evolvex at the local SigNoz instance in `.env`:
+
+```bash
+SIGNOZ_CLOUD_URL=http://localhost:8080
+SIGNOZ_API_KEY=<from SigNoz Settings → API Keys>
+SIGNOZ_INGESTION_KEY=<optional, for OTLP ingest>
+```
+
+Run Evolvex separately (`pnpm dev` — see below). Foundry deploys **SigNoz only**; Evolvex is the application layer on top.
 
 ## Local setup
 

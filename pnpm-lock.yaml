@@ -292,6 +292,19 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/sdk:
+    dependencies:
+      zod:
+        specifier: ^4.3.5
+        version: 4.4.3
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/services:
     dependencies:
       '@opentelemetry/auto-instrumentations-node':

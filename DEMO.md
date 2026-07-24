@@ -4,6 +4,7 @@
 
 ## Before the demo
 
+- [ ] **SigNoz (Foundry):** `foundryctl cast -f casting.yaml` — uses repo-root `casting.yaml` + `casting.yaml.lock`
 - [ ] `.env` production values set on Railway (API) and Vercel (web) — or local `.env` wired per WIRING.md
 - [ ] SigNoz alert configured → webhook URL live (`SIGNOZ_WEBHOOK_SECRET` set)
 - [ ] GitHub webhook on repo → `/webhooks/github` (`GITHUB_WEBHOOK_SECRET` set)

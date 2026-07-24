@@ -1,8 +1,12 @@
 import express from "express";
 import { logger } from "@repo/logger";
 import InvestigationService from "@repo/services/investigation";
-import { kubernetesEventSchema } from "@repo/services/kubernetes/webhook-parser";
-import { requireWebhookSecret } from "@repo/services/webhooks/verify";
+import { kubernetesEventSchema, parseKubernetesEvent } from "@repo/services/kubernetes/webhook-parser";
+import { recordKubernetesClusterHeartbeat } from "@repo/services/organization/integrations";
+import { requireKubernetesWebhookAuth } from "@repo/services/webhooks/kubernetes-auth";
+
+import { resolveInvestigationOwnerUserId } from "@repo/services/investigation/owner";
+import { resolveOrganizationForUser } from "@repo/services/organization";
 
 const investigationService = new InvestigationService();
 
@@ -15,11 +19,13 @@ kubernetesWebhookRouter.get("/", (_req, res) => {
     message: "Evolvex Kubernetes webhook endpoint",
     webhookUrl: `${baseUrl.replace(/\/+$/, "")}/webhooks/kubernetes`,
     webhookAuthConfigured: Boolean(process.env.KUBERNETES_WEBHOOK_SECRET?.trim()),
+    helmChart: "./helm/evolvex-agent",
   });
 });
 
 kubernetesWebhookRouter.post("/", async (req, res) => {
-  if (!requireWebhookSecret(req, res, "KUBERNETES_WEBHOOK_SECRET", "x-evolvex-k8s-secret")) return;
+  const auth = await requireKubernetesWebhookAuth(req, res);
+  if (!auth.ok) return;
 
   const parsed = kubernetesEventSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -27,7 +33,25 @@ kubernetesWebhookRouter.post("/", async (req, res) => {
   }
 
   try {
-    const result = await investigationService.handleKubernetesWebhook(parsed.data);
+    let organizationId = auth.organizationId;
+    if (!organizationId) {
+      const ownerUserId = await resolveInvestigationOwnerUserId();
+      organizationId = await resolveOrganizationForUser(ownerUserId);
+    }
+
+    if (organizationId) {
+      const event = parseKubernetesEvent(parsed.data);
+      await recordKubernetesClusterHeartbeat({
+        organizationId,
+        metadata: {
+          namespaces: event.namespace ? [event.namespace] : undefined,
+          lastEventKind: event.reason,
+          lastEventNamespace: event.namespace,
+        },
+      });
+    }
+
+    const result = await investigationService.handleKubernetesWebhook(parsed.data, { organizationId });
     logger.info("Kubernetes webhook processed", result);
     return res.status(200).json({ ok: true, ...result });
   } catch (err) {

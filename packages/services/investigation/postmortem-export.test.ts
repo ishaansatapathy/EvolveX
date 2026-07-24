@@ -192,6 +192,7 @@ const baseContext: InvestigationOsContext = {
       },
     ],
   },
+  serviceMapCorrelation: null,
   remediationPlaybooks: {
     summary: "2 remediation steps ranked from collected incident evidence.",
     steps: [
@@ -205,6 +206,8 @@ const baseContext: InvestigationOsContext = {
       },
     ],
   },
+  investigationMemory: [],
+  telemetryIntelligence: null,
 };
 
 describe("buildPostmortemMarkdown", () => {

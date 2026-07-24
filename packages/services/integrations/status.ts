@@ -13,8 +13,12 @@ import {
   getIntegrationBaseUrl,
   isDatabaseConfigured,
   isEbpfWebhookConfigured,
+  isFeatureFlagWebhookConfigured,
+  isCicdWebhookConfigured,
   isGithubWebhookConfigured,
+  isJiraConfigured,
   isKubernetesWebhookConfigured,
+  isSdkApiConfigured,
   isSignozIngestionConfigured,
   isSignozWebhookConfigured,
 } from "./config";
@@ -78,6 +82,8 @@ export function buildIntegrationHealth(input?: {
   orgGithubWebhookConfigured?: boolean;
   orgSlackConfigured?: boolean;
   orgPagerDutyConfigured?: boolean;
+  orgJiraConfigured?: boolean;
+  orgKubernetesConfigured?: boolean;
   orgSource?: "organization" | "environment";
 }): IntegrationHealthResult {
   const orgSource = input?.orgSource ?? "environment";
@@ -86,6 +92,8 @@ export function buildIntegrationHealth(input?: {
   const githubWebhookReady = input?.orgGithubWebhookConfigured ?? isGithubWebhookConfigured();
   const slackReady = input?.orgSlackConfigured ?? isSlackConfigured();
   const pagerDutyReady = input?.orgPagerDutyConfigured ?? isPagerDutyConfigured();
+  const jiraReady = input?.orgJiraConfigured ?? isJiraConfigured();
+  const kubernetesReady = input?.orgKubernetesConfigured ?? isKubernetesWebhookConfigured();
   const sourceLabel = orgSource === "organization" ? "workspace vault" : ".env";
   const baseUrl = getIntegrationBaseUrl();
   const signozConfig = getSignozConfig();
@@ -205,11 +213,11 @@ export function buildIntegrationHealth(input?: {
       label: "Kubernetes",
       category: "change",
       configured: true,
-      authConfigured: isKubernetesWebhookConfigured(),
+      authConfigured: kubernetesReady,
       connected: null,
-      detail: isKubernetesWebhookConfigured()
-        ? "Cluster change events can correlate to investigations"
-        : "Set KUBERNETES_WEBHOOK_SECRET for secured cluster events",
+      detail: kubernetesReady
+        ? `Cluster agent webhook configured · ${sourceLabel}`
+        : "Connect Kubernetes in Settings or set KUBERNETES_WEBHOOK_SECRET",
       webhookUrl: `${baseUrl}/webhooks/kubernetes`,
       actionLabel: "Copy K8s webhook",
     }),
@@ -225,6 +233,69 @@ export function buildIntegrationHealth(input?: {
         : "Optional — set EBPF_WEBHOOK_SECRET for Cilium/Pixie-style events",
       webhookUrl: `${baseUrl}/webhooks/ebpf`,
       actionLabel: "Copy eBPF webhook",
+    }),
+    buildItem({
+      id: "feature_flag_webhook",
+      label: "Feature flags",
+      category: "change",
+      configured: true,
+      authConfigured: isFeatureFlagWebhookConfigured(),
+      connected: null,
+      detail: isFeatureFlagWebhookConfigured()
+        ? "LaunchDarkly / Flagsmith / OpenFeature toggles correlate to investigations"
+        : "Set FEATURE_FLAG_WEBHOOK_SECRET for flag rollout correlation (#52)",
+      webhookUrl: `${baseUrl}/webhooks/feature-flags`,
+      actionLabel: "Copy feature flag webhook",
+    }),
+    buildItem({
+      id: "cicd_webhook",
+      label: "CI/CD pipeline",
+      category: "change",
+      configured: true,
+      authConfigured: isCicdWebhookConfigured(),
+      connected: null,
+      detail: isCicdWebhookConfigured()
+        ? "GitHub Actions / Jenkins build-test-deploy stages correlate to timeline"
+        : "Set CICD_WEBHOOK_SECRET for pipeline stage webhooks (#53)",
+      webhookUrl: `${baseUrl}/webhooks/cicd`,
+      actionLabel: "Copy CI/CD webhook",
+    }),
+    buildItem({
+      id: "jira",
+      label: "Jira",
+      category: "change",
+      configured: true,
+      authConfigured: jiraReady,
+      connected: null,
+      detail: jiraReady
+        ? `Create Jira issues from investigations · ${sourceLabel}`
+        : "Connect Jira in workspace settings or set JIRA_* env vars (#48)",
+      webhookUrl: null,
+      actionLabel: "Configure Jira",
+    }),
+    buildItem({
+      id: "sdk",
+      label: "Evolvex SDK",
+      category: "platform",
+      configured: true,
+      authConfigured: isSdkApiConfigured(),
+      connected: null,
+      detail: isSdkApiConfigured()
+        ? "External integrations can push events and read investigations via REST (#57)"
+        : "Set EVOLVEX_API_KEY for Bearer auth on /api/v1/sdk",
+      webhookUrl: `${baseUrl}/api/v1/sdk`,
+      actionLabel: "Copy SDK base URL",
+    }),
+    buildItem({
+      id: "plugins",
+      label: "Plugin marketplace",
+      category: "platform",
+      configured: true,
+      authConfigured: true,
+      connected: null,
+      detail: "Install Datadog, Prometheus, security scanner, and custom event plugins (#58)",
+      webhookUrl: `${baseUrl}/webhooks/plugins`,
+      actionLabel: "Open plugin catalog",
     }),
     buildItem({
       id: "obi",
