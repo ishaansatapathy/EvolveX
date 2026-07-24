@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 
 import { AppPageHeader } from "~/components/evolvex/app-shell";
+import { EvidenceCitationMarkdown } from "~/components/evolvex/evidence-citation-markdown";
 import { StructuredEvidencePanel } from "~/components/evolvex/structured-evidence-panel";
 import { trpc } from "~/trpc/client";
 
@@ -98,6 +99,26 @@ export default function InvestigationsPage() {
       { label: "READY", value: String(ready), note: "Timeline available" },
     ];
   }, [investigations]);
+
+  const timelineCitationRefById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const citation of osContext?.evidenceCitations.citations ?? []) {
+      if (citation.ref.startsWith("T") && citation.timelineEntryId) {
+        map.set(citation.timelineEntryId, citation.ref);
+      }
+    }
+    return map;
+  }, [osContext?.evidenceCitations.citations]);
+
+  const evidenceCitationRefById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const citation of osContext?.evidenceCitations.citations ?? []) {
+      if (citation.ref.startsWith("E") && citation.evidenceId) {
+        map.set(citation.evidenceId, citation.ref);
+      }
+    }
+    return map;
+  }, [osContext?.evidenceCitations.citations]);
 
   const summaryText =
     osContext?.investigation.summary ??
@@ -359,14 +380,15 @@ export default function InvestigationsPage() {
               {osContext.llmSummary ? (
                 <section className="evx-dash__cause" style={{ transform: "rotate(0.4deg)" }}>
                   <p className="evx-dash__cause-kicker">✦ AI ROOT CAUSE · OPENAI</p>
-                  <div
-                    className="evx-dash__cause-text"
-                    style={{ whiteSpace: "pre-wrap" }}
-                  >
-                    {osContext.llmSummary.markdown}
+                  <div className="evx-dash__cause-text">
+                    <EvidenceCitationMarkdown
+                      markdown={osContext.llmSummary.markdown}
+                      citations={osContext.evidenceCitations.citations}
+                      onCitationClick={scrollToTimelineEntry}
+                    />
                   </div>
                   <p className="evx-dash__stat-note" style={{ marginTop: "0.5rem", color: "rgba(17,17,17,0.55)" }}>
-                    Generated {formatRelativeTime(osContext.llmSummary.generatedAt)}
+                    Generated {formatRelativeTime(osContext.llmSummary.generatedAt)} · click [T1]/[E1] citations to jump to timeline
                   </p>
                 </section>
               ) : osContext.investigation.status === "ready" ? (
@@ -444,6 +466,9 @@ export default function InvestigationsPage() {
                   timeline.map((ev) => (
                     <div key={ev.id} className="evx-dash__event" data-timeline-entry-id={ev.id}>
                       <span className="evx-dash__event-at">{formatEventTime(ev.occurredAt)}</span>
+                      {timelineCitationRefById.get(ev.id) ? (
+                        <span className="evx-dash__citation-badge">{timelineCitationRefById.get(ev.id)}</span>
+                      ) : null}
                       <span className={`evx-dash__event-kind k-${ev.kind.toLowerCase()}`}>{ev.kind}</span>
                       <span className="evx-dash__event-text">
                         <strong>{ev.title}</strong> — {ev.detail}
@@ -481,13 +506,40 @@ export default function InvestigationsPage() {
                 <section className="evx-dash__context-section">
                   <p className="evx-dash__timeline-label">EVIDENCE STORE · {osContext.evidence.length} ROWS</p>
                   <div className="evx-dash__table">
-                    {osContext.evidence.slice(0, 8).map((item) => (
-                      <div key={item.id} className="evx-dash__row" style={{ gridTemplateColumns: "72px 1fr 64px" }}>
-                        <span className="evx-dash__chip">{item.type}</span>
-                        <span className="evx-dash__event-text">{item.description}</span>
-                        <span className="evx-dash__event-at">{formatEventTime(item.occurredAt)}</span>
-                      </div>
-                    ))}
+                    {osContext.evidence.slice(0, 8).map((item) => {
+                      const ref = evidenceCitationRefById.get(item.id);
+                      const rowContent = (
+                        <>
+                          <span className="evx-dash__chip">
+                            {item.type}
+                            {ref ? ` · ${ref}` : ""}
+                          </span>
+                          <span className="evx-dash__event-text">{item.description}</span>
+                          <span className="evx-dash__event-at">{formatEventTime(item.occurredAt)}</span>
+                        </>
+                      );
+
+                      if (item.timelineEntryId) {
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className="evx-dash__row evx-dash__row--citation"
+                            style={{ gridTemplateColumns: "72px 1fr 64px" }}
+                            onClick={() => scrollToTimelineEntry(item.timelineEntryId!)}
+                            title={`Jump to timeline ${ref ?? ""}`.trim()}
+                          >
+                            {rowContent}
+                          </button>
+                        );
+                      }
+
+                      return (
+                        <div key={item.id} className="evx-dash__row" style={{ gridTemplateColumns: "72px 1fr 64px" }}>
+                          {rowContent}
+                        </div>
+                      );
+                    })}
                   </div>
                 </section>
               ) : null}

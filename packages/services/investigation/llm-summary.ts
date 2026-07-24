@@ -3,6 +3,10 @@ import { investigationSummariesTable } from "@repo/database/schema";
 
 import { createChatCompletion, getOpenAiModel, isOpenAiConfigured } from "../ai/openai";
 import { logger } from "@repo/logger";
+import {
+  formatEvidenceBlockWithCitationRefs,
+  formatTimelineBlockWithCitationRefs,
+} from "./evidence-citations";
 
 export type SummaryEvidenceInput = {
   investigationId: string;
@@ -10,11 +14,17 @@ export type SummaryEvidenceInput = {
   summary: string;
   affectedServices: string[];
   timeline: Array<{
+    id: string;
     kind: string;
     title: string;
     detail: string;
     occurredAt: string;
     source?: string | null;
+  }>;
+  evidence: Array<{
+    type: string;
+    description: string;
+    occurredAt: string;
   }>;
   changeEvents: Array<{
     type: string;
@@ -25,18 +35,6 @@ export type SummaryEvidenceInput = {
   runtimeSignalCount: number;
   structuredEvidenceBlock?: string;
 };
-
-function formatTimelineBlock(
-  timeline: SummaryEvidenceInput["timeline"],
-): string {
-  if (timeline.length === 0) return "(no timeline entries)";
-  return timeline
-    .map(
-      (entry) =>
-        `- [${entry.kind}] ${entry.occurredAt}${entry.source ? ` (${entry.source})` : ""}: ${entry.title} — ${entry.detail}`,
-    )
-    .join("\n");
-}
 
 function formatChangeBlock(
   changeEvents: SummaryEvidenceInput["changeEvents"],
@@ -77,6 +75,8 @@ export async function generateAndPersistInvestigationSummary(
     "Do not invent deployments, metrics, root causes, or services not mentioned.",
     "If evidence is inconclusive, state what is known and list concrete next steps.",
     "Respond in markdown with sections: ## Summary, ## Likely cause, ## Supporting evidence, ## Recommended next steps.",
+    "In Likely cause and Supporting evidence, cite timeline/evidence refs inline using exact markers like [T1] or [E2] from the provided lists.",
+    "Do not invent citation IDs.",
   ].join(" ");
 
   const userPrompt = [
@@ -85,8 +85,11 @@ export async function generateAndPersistInvestigationSummary(
     `Rule-based context: ${input.summary}`,
     `Runtime signals stored: ${input.runtimeSignalCount}`,
     "",
-    "Timeline:",
-    formatTimelineBlock(input.timeline),
+    "Citable timeline (use [T1], [T2], ...):",
+    formatTimelineBlockWithCitationRefs(input.timeline),
+    "",
+    "Citable evidence store (use [E1], [E2], ...):",
+    formatEvidenceBlockWithCitationRefs(input.evidence),
     "",
     "Change events:",
     formatChangeBlock(input.changeEvents),

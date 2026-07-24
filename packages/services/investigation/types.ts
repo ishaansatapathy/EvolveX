@@ -152,6 +152,18 @@ export const investigationOsContextSchema = z.object({
       }),
     ),
   }),
+  evidenceCitations: z.object({
+    citations: z.array(
+      z.object({
+        ref: z.string(),
+        timelineEntryId: z.string().nullable(),
+        evidenceId: z.string().nullable(),
+        kind: z.string(),
+        label: z.string(),
+        occurredAt: z.string(),
+      }),
+    ),
+  }),
 });
 
 export const investigationNoteSchema = z.object({

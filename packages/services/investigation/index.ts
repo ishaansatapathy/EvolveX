@@ -35,6 +35,7 @@ import {
 } from "./correlation";
 import { enrichEbpfFromSignozMetrics } from "../ebpf/signoz-metrics";
 import { computeEvidenceCompleteness } from "./evidence-completeness";
+import { buildEvidenceCitationCatalog } from "./evidence-citations";
 import { buildStructuredEvidence, formatStructuredEvidenceForPrompt } from "./structured-evidence";
 import { computeInvestigationPinpoint, loadPinpointFileSnippet } from "./pinpoint";
 import { suggestInvestigationFix } from "./fix-suggestion";
@@ -324,6 +325,24 @@ class InvestigationService {
       runtimeSignals: mappedRuntimeSignals,
     });
 
+    const mappedEvidence = evidence.map(
+      (item): EvidenceRowDto => ({
+        id: item.id,
+        type: item.type,
+        description: item.description,
+        occurredAt: item.occurredAt.toISOString(),
+        url: item.url,
+        confidence: item.confidence,
+        timelineEntryId: item.timelineEntryId,
+        metadata: item.metadata ?? {},
+      }),
+    );
+
+    const evidenceCitations = buildEvidenceCitationCatalog({
+      timeline: mappedTimeline,
+      evidence: mappedEvidence,
+    });
+
     return {
       investigation: {
         id: row.id,
@@ -336,18 +355,7 @@ class InvestigationService {
         completedAt: row.completedAt?.toISOString() ?? null,
       },
       timeline: mappedTimeline,
-      evidence: evidence.map(
-        (item): EvidenceRowDto => ({
-          id: item.id,
-          type: item.type,
-          description: item.description,
-          occurredAt: item.occurredAt.toISOString(),
-          url: item.url,
-          confidence: item.confidence,
-          timelineEntryId: item.timelineEntryId,
-          metadata: item.metadata ?? {},
-        }),
-      ),
+      evidence: mappedEvidence,
       changeEvents: mappedChangeEvents,
       runtimeSignals: mappedRuntimeSignals,
       dependencies: { nodes, edges },
@@ -359,6 +367,7 @@ class InvestigationService {
         : null,
       evidenceCompleteness,
       structuredEvidence,
+      evidenceCitations,
     };
   }
 
@@ -655,7 +664,7 @@ class InvestigationService {
 
       const summaryText = buildPersistedSummary(context);
 
-      const [timelineRows, changeRows, runtimeRows] = await Promise.all([
+      const [timelineRows, changeRows, runtimeRows, evidenceRows] = await Promise.all([
         db
           .select()
           .from(investigationTimelineEntriesTable)
@@ -669,6 +678,11 @@ class InvestigationService {
           .select()
           .from(runtimeSignalsTable)
           .where(eq(runtimeSignalsTable.investigationId, investigationId)),
+        db
+          .select()
+          .from(evidenceTable)
+          .where(eq(evidenceTable.investigationId, investigationId))
+          .orderBy(asc(evidenceTable.occurredAt)),
       ]);
 
       const mappedRuntimeRows: RuntimeSignalRowDto[] = runtimeRows.map((item) => ({
@@ -705,11 +719,17 @@ class InvestigationService {
         summary: summaryText,
         affectedServices: row.affectedServices,
         timeline: timelineRows.map((entry) => ({
+          id: entry.id,
           kind: entry.kind,
           title: entry.title,
           detail: entry.detail,
           occurredAt: entry.occurredAt.toISOString(),
           source: entry.source,
+        })),
+        evidence: evidenceRows.map((item) => ({
+          type: item.type,
+          description: item.description,
+          occurredAt: item.occurredAt.toISOString(),
         })),
         changeEvents: changeRows.map((event) => ({
           type: event.type,
@@ -1174,11 +1194,17 @@ class InvestigationService {
       summary: row.summary ?? context.investigation.summary ?? row.title,
       affectedServices: row.affectedServices,
       timeline: context.timeline.map((entry) => ({
+        id: entry.id,
         kind: entry.kind,
         title: entry.title,
         detail: entry.detail,
         occurredAt: entry.occurredAt,
         source: entry.source,
+      })),
+      evidence: context.evidence.map((item) => ({
+        type: item.type,
+        description: item.description,
+        occurredAt: item.occurredAt,
       })),
       changeEvents: context.changeEvents.map((event) => ({
         type: event.type,

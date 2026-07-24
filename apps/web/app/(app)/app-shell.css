@@ -959,6 +959,92 @@
     box-shadow 0.25s ease;
 }
 
+.evx-dash__citation-markdown {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.evx-dash__citation-heading {
+  margin: 0.35rem 0 0;
+  font-family: var(--font-evolvex-display), "Arial Black", sans-serif;
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.evx-dash__citation-line {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.evx-dash__citation-spacer {
+  height: 0.25rem;
+}
+
+.evx-dash__citation-link {
+  display: inline;
+  margin: 0 0.08rem;
+  padding: 0.05rem 0.28rem;
+  border: 1px solid rgba(17, 17, 17, 0.25);
+  border-radius: 4px;
+  background: rgba(230, 255, 0, 0.35);
+  color: #111;
+  font: inherit;
+  font-size: 0.82em;
+  font-weight: 700;
+  cursor: pointer;
+  vertical-align: baseline;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.evx-dash__citation-link:hover {
+  background: var(--evx-yellow);
+  transform: translateY(-1px);
+}
+
+.evx-dash__citation-static {
+  display: inline;
+  margin: 0 0.08rem;
+  padding: 0.05rem 0.28rem;
+  border-radius: 4px;
+  background: rgba(17, 17, 17, 0.08);
+  font-size: 0.82em;
+  font-weight: 700;
+}
+
+.evx-dash__citation-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.65rem;
+  padding: 0.08rem 0.28rem;
+  border: 1px solid rgba(230, 255, 0, 0.35);
+  border-radius: 4px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--evx-yellow);
+}
+
+.evx-dash__row--citation {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.evx-dash__row--citation:hover {
+  border-color: rgba(230, 255, 0, 0.45);
+  background: rgba(230, 255, 0, 0.05);
+}
+
 .evx-dash__chip--high {
   color: #111;
   background: var(--evx-yellow);
