@@ -7,6 +7,7 @@ import { AppPageHeader } from "~/components/evolvex/app-shell";
 import { EvidenceCitationMarkdown } from "~/components/evolvex/evidence-citation-markdown";
 import { IncidentNarrativePanel } from "~/components/evolvex/incident-narrative-panel";
 import { InvestigationCaseNav } from "~/components/evolvex/investigation-case-nav";
+import { InvestigationSplitPane } from "~/components/evolvex/investigation-split-pane";
 import { StructuredEvidencePanel } from "~/components/evolvex/structured-evidence-panel";
 import { trpc } from "~/trpc/client";
 
@@ -259,56 +260,58 @@ export default function InvestigationsPage() {
         subtitle={`${investigations.length} case${investigations.length === 1 ? "" : "s"} · SigNoz alerts`}
       />
 
-      <section className="evx-dash__grid evx-dash__grid--investigations">
-        <div className="evx-dash__incidents evx-dash__incidents--fixed">
-          <div className="evx-dash__incidents-panel">
-            <div className="evx-dash__incidents-panel-head">
-              <p className="evx-dash__panel-label">INCIDENT QUEUE</p>
-              <span className="evx-dash__incidents-count">{investigations.length} active</span>
-            </div>
-            {investigations.map((inc) => {
-              const isActive = activeId === inc.id;
-              const evidencePercent =
-                isActive && contextQuery.data?.evidenceCompleteness
-                  ? contextQuery.data.evidenceCompleteness.completenessPercent
-                  : null;
+      <InvestigationSplitPane
+        left={
+          <div className="evx-dash__incidents evx-dash__incidents--fixed">
+            <div className="evx-dash__incidents-panel">
+              <div className="evx-dash__incidents-panel-head">
+                <p className="evx-dash__panel-label">INCIDENT QUEUE</p>
+                <span className="evx-dash__incidents-count">{investigations.length} active</span>
+              </div>
+              {investigations.map((inc) => {
+                const isActive = activeId === inc.id;
+                const evidencePercent =
+                  isActive && contextQuery.data?.evidenceCompleteness
+                    ? contextQuery.data.evidenceCompleteness.completenessPercent
+                    : null;
 
-              return (
-                <button
-                  key={inc.id}
-                  type="button"
-                  className={`evx-dash__incident sev-${mapSeverity(inc.severity)} ${isActive ? "is-selected" : ""}`}
-                  onClick={() => setSelectedId(inc.id)}
-                >
-                  <span className="evx-dash__incident-top">
-                    <span className="evx-dash__incident-id">{inc.shortId}</span>
-                    <span className="evx-dash__incident-badges">
-                      {isActive ? <span className="evx-dash__incident-viewing">VIEWING</span> : null}
-                      <span className={`evx-dash__incident-severity sev-${mapSeverity(inc.severity)}`}>
-                        {formatSeverityLabel(inc.severity)}
-                      </span>
-                      <span className={`evx-dash__incident-status st-${mapUiStatus(inc.status).toLowerCase()}`}>
-                        {mapUiStatus(inc.status)}
+                return (
+                  <button
+                    key={inc.id}
+                    type="button"
+                    className={`evx-dash__incident sev-${mapSeverity(inc.severity)} ${isActive ? "is-selected" : ""}`}
+                    onClick={() => setSelectedId(inc.id)}
+                  >
+                    <span className="evx-dash__incident-top">
+                      <span className="evx-dash__incident-id">{inc.shortId}</span>
+                      <span className="evx-dash__incident-badges">
+                        {isActive ? <span className="evx-dash__incident-viewing">VIEWING</span> : null}
+                        <span className={`evx-dash__incident-severity sev-${mapSeverity(inc.severity)}`}>
+                          {formatSeverityLabel(inc.severity)}
+                        </span>
+                        <span className={`evx-dash__incident-status st-${mapUiStatus(inc.status).toLowerCase()}`}>
+                          {mapUiStatus(inc.status)}
+                        </span>
                       </span>
                     </span>
-                  </span>
-                  <span className="evx-dash__incident-title">{inc.title}</span>
-                  <span className="evx-dash__incident-footer">
-                    <span className="evx-dash__incident-service">{inc.affectedServices[0] ?? "unknown"}</span>
-                    <span className="evx-dash__incident-meta">{formatRelativeTime(inc.createdAt)}</span>
-                    {evidencePercent !== null ? (
-                      <span className="evx-dash__incident-evidence">{evidencePercent}% evidence</span>
-                    ) : inc.status === "building" ? (
-                      <span className="evx-dash__incident-evidence is-building">collecting…</span>
-                    ) : null}
-                  </span>
-                </button>
-              );
-            })}
+                    <span className="evx-dash__incident-title">{inc.title}</span>
+                    <span className="evx-dash__incident-footer">
+                      <span className="evx-dash__incident-service">{inc.affectedServices[0] ?? "unknown"}</span>
+                      <span className="evx-dash__incident-meta">{formatRelativeTime(inc.createdAt)}</span>
+                      {evidencePercent !== null ? (
+                        <span className="evx-dash__incident-evidence">{evidencePercent}% evidence</span>
+                      ) : inc.status === "building" ? (
+                        <span className="evx-dash__incident-evidence is-building">collecting…</span>
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-
-        <div ref={detailScrollRef} className="evx-dash__detail evx-dash__detail--case evx-dash__detail--scroll">
+        }
+        right={
+          <div ref={detailScrollRef} className="evx-dash__detail evx-dash__detail--case evx-dash__detail--scroll">
           {contextQuery.isLoading && !osContext ? (
             <p className="evx-dash__stat-note">Loading case context from Postgres…</p>
           ) : osContext && activeListItem ? (
@@ -738,8 +741,9 @@ export default function InvestigationsPage() {
           ) : (
             <p className="evx-dash__stat-note">Select a case to view details.</p>
           )}
-        </div>
-      </section>
+          </div>
+        }
+      />
     </div>
   );
 }

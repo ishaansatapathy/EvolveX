@@ -1703,6 +1703,62 @@
   overflow: hidden;
 }
 
+.evx-dash__split-pane {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.evx-dash__split-pane-left,
+.evx-dash__split-pane-right {
+  min-height: 0;
+  min-width: 0;
+}
+
+.evx-dash__split-pane-left {
+  overflow: hidden;
+}
+
+.evx-dash__split-pane-right {
+  overflow: hidden;
+}
+
+.evx-dash__split-pane-handle {
+  position: relative;
+  width: 10px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.evx-dash__split-pane-handle::before {
+  content: "";
+  position: absolute;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(240, 240, 235, 0.12);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+
+.evx-dash__split-pane-handle:hover::before,
+.evx-dash__split-pane.is-resizing .evx-dash__split-pane-handle::before {
+  width: 4px;
+  background: rgba(230, 255, 0, 0.55);
+}
+
+.evx-dash__split-pane.is-resizing {
+  cursor: col-resize;
+}
+
 .evx-dash__grid--investigations {
   flex: 1;
   min-height: 0;
@@ -1735,6 +1791,15 @@
 @media (max-width: 900px) {
   .evx-dash__investigations-layout {
     overflow: visible;
+  }
+
+  .evx-dash__split-pane {
+    grid-template-columns: 1fr !important;
+    overflow: visible;
+  }
+
+  .evx-dash__split-pane-handle {
+    display: none;
   }
 
   .evx-dash__grid--investigations {
