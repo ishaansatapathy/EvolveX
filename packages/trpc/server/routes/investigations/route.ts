@@ -324,4 +324,27 @@ export const investigationsRouter = router({
         mapServiceError(error);
       }
     }),
+
+  exportPostmortem: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .output(
+      z
+        .object({
+          markdown: z.string(),
+          filename: z.string(),
+          exportedAt: z.string(),
+        })
+        .nullable(),
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        const result = await investigationService.exportPostmortem(input.id, ctx.user.id);
+        if (!result) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+        }
+        return result;
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
 });

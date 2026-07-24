@@ -38,6 +38,7 @@ import { computeEvidenceCompleteness } from "./evidence-completeness";
 import { buildEvidenceCitationCatalog } from "./evidence-citations";
 import { buildStructuredEvidence, formatStructuredEvidenceForPrompt } from "./structured-evidence";
 import { computeInvestigationPinpoint, loadPinpointFileSnippet } from "./pinpoint";
+import { buildPostmortemFilename, buildPostmortemMarkdown } from "./postmortem-export";
 import { suggestInvestigationFix } from "./fix-suggestion";
 import { parseEbpfEvent, type EbpfEventPayload } from "../ebpf/webhook-parser";
 import { parseGithubDeployEvent, type GithubPushPayload } from "../github/webhook-parser";
@@ -1174,6 +1175,42 @@ class InvestigationService {
       timelineSummary: row.summary ?? context.investigation.summary ?? row.title,
       fileSnippet,
     });
+  }
+
+  async exportPostmortem(investigationId: string, userId: string) {
+    const context = await this.getOsContext(investigationId, userId);
+    if (!context) return null;
+
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || !canAccessInvestigation(row, userId)) return null;
+
+    const notes = (await this.listNotes(investigationId, userId)) ?? [];
+    const pinpoint =
+      row.status === "ready" ? await this.getPinpoint(investigationId, userId) : null;
+    const exportedAt = new Date().toISOString();
+    const shortId = shortInvestigationId(row.id);
+
+    const markdown = buildPostmortemMarkdown({
+      shortId,
+      title: row.title,
+      affectedServices: row.affectedServices,
+      createdAt: row.createdAt.toISOString(),
+      context,
+      notes,
+      pinpoint,
+      exportedAt,
+    });
+
+    return {
+      markdown,
+      filename: buildPostmortemFilename(shortId),
+      exportedAt,
+    };
   }
 
   async regenerateSummary(investigationId: string, userId: string) {

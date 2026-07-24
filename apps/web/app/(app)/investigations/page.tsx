@@ -21,6 +21,16 @@ function formatEventTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function downloadTextFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function mapUiStatus(status: "building" | "ready" | "failed") {
   if (status === "building") return "INVESTIGATING";
   if (status === "failed") return "OPEN";
@@ -76,8 +86,13 @@ export default function InvestigationsPage() {
   });
 
   const suggestFixMutation = trpc.investigations.suggestFix.useMutation();
+  const postmortemExportQuery = trpc.investigations.exportPostmortem.useQuery(
+    { id: activeId ?? "" },
+    { enabled: false },
+  );
   const [fixPreview, setFixPreview] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [exportingPostmortem, setExportingPostmortem] = useState(false);
 
   const osContext = contextQuery.data;
   const timeline = osContext?.timeline ?? [];
@@ -139,6 +154,40 @@ export default function InvestigationsPage() {
       return;
     }
     scrollToTimeline();
+  }
+
+  async function fetchPostmortemExport() {
+    if (!activeId) return null;
+    const result = await postmortemExportQuery.refetch();
+    return result.data ?? null;
+  }
+
+  async function handleDownloadPostmortem() {
+    setExportingPostmortem(true);
+    try {
+      const exported = await fetchPostmortemExport();
+      if (!exported) {
+        alert("Could not export postmortem for this case.");
+        return;
+      }
+      downloadTextFile(exported.filename, exported.markdown);
+    } finally {
+      setExportingPostmortem(false);
+    }
+  }
+
+  async function handleCopyPostmortem() {
+    setExportingPostmortem(true);
+    try {
+      const exported = await fetchPostmortemExport();
+      if (!exported) {
+        alert("Could not export postmortem for this case.");
+        return;
+      }
+      await navigator.clipboard.writeText(exported.markdown);
+    } finally {
+      setExportingPostmortem(false);
+    }
   }
 
   if (listQuery.isLoading) {
@@ -239,6 +288,26 @@ export default function InvestigationsPage() {
                   <Link href={`/traces?investigation=${activeListItem.id}&service=${primaryService}`} className="evx-dash__btn-ghost">
                     View Traces →
                   </Link>
+                  {timeline.length > 0 ? (
+                    <>
+                      <button
+                        type="button"
+                        className="evx-dash__btn-ghost"
+                        disabled={exportingPostmortem}
+                        onClick={() => void handleDownloadPostmortem()}
+                      >
+                        {exportingPostmortem ? "Exporting…" : "Export postmortem ↓"}
+                      </button>
+                      <button
+                        type="button"
+                        className="evx-dash__btn-ghost"
+                        disabled={exportingPostmortem}
+                        onClick={() => void handleCopyPostmortem()}
+                      >
+                        Copy postmortem
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </div>
 
