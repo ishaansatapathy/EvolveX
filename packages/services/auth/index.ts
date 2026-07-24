@@ -690,6 +690,24 @@ class AuthService {
       throw toAuthError(error, "Google sign-in failed. Please try again.");
     }
   }
+
+  /** Development-only: issue a browser session for the configured investigation owner. */
+  public async issueDevSession(res: Response, email: string, returnTo = "/investigations") {
+    if (env.NODE_ENV !== "development") {
+      throw new AuthError("FORBIDDEN", "Dev login is disabled outside development.");
+    }
+
+    const user = await this.findUserByEmail(email);
+    if (!user) {
+      throw new AuthError(
+        "NOT_FOUND",
+        `No user for ${email}. Sign in once with Google, then retry dev quick-login.`,
+      );
+    }
+
+    issueVerifiedSession(res, user);
+    return `${env.CLIENT_URL}${sanitizeRedirectPath(returnTo)}`;
+  }
 }
 
 export default AuthService;

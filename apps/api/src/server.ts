@@ -11,6 +11,7 @@ import { logger } from "@repo/logger";
 import { env } from "./env";
 import { createTrpcRateLimitMiddleware } from "./middleware/rate-limiters";
 import { googleAuthRouter } from "./routes/google-auth";
+import { devAuthRouter } from "./routes/dev-auth";
 import { signozWebhookRouter } from "./routes/signoz-webhook";
 import { githubWebhookRouter } from "./routes/github-webhook";
 import { kubernetesWebhookRouter } from "./routes/kubernetes-webhook";
@@ -144,6 +145,9 @@ app.get("/openapi.json", (_req, res) => {
 });
 
 app.use("/auth", googleAuthRouter);
+if (env.NODE_ENV === "development") {
+  app.use("/auth/dev", devAuthRouter);
+}
 
 const trpcRateLimit = createTrpcRateLimitMiddleware();
 
