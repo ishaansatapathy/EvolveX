@@ -27,6 +27,11 @@ export default function TracesPageContent() {
   const signozStatus = trpc.telemetry.status.useQuery();
   const useCaseScope = isUuid(investigationId);
 
+  const caseMetaQuery = trpc.investigations.get.useQuery(
+    { id: investigationId ?? "" },
+    { enabled: useCaseScope },
+  );
+
   const caseQuery = trpc.investigations.traces.useQuery(
     { id: investigationId ?? "" },
     { enabled: useCaseScope },
@@ -74,7 +79,15 @@ export default function TracesPageContent() {
   return (
     <>
       <AppPageHeader kicker="⊙ DISTRIBUTED TRACES" title="Traces">
-        {useCaseScope ? <span className="evx-dash__chip">Case linked</span> : null}
+        {useCaseScope && caseMetaQuery.data ? (
+          <Link
+            href={`/investigations?investigation=${caseMetaQuery.data.id}`}
+            className="evx-dash__chip evx-dash__chip--back"
+          >
+            ← {caseMetaQuery.data.shortId}
+          </Link>
+        ) : null}
+        {useCaseScope ? <span className="evx-dash__chip">Incident window</span> : null}
         {!useCaseScope && signozStatus.data?.configured ? (
           <span className="evx-dash__chip">Live · 15m · refreshes 5s</span>
         ) : null}
@@ -127,7 +140,10 @@ export default function TracesPageContent() {
           <span className="evx-dash__chip">{caseQuery.data?.service ?? serviceFilter}</span>
         ) : null}
         {investigationId ? (
-          <Link href={`/logs?investigation=${investigationId}&service=${serviceFilter}`} className="evx-dash__chip">
+          <Link
+            href={`/logs?investigation=${investigationId}&service=${encodeURIComponent(serviceFilter || caseQuery.data?.service || "")}`}
+            className="evx-dash__chip"
+          >
             Open related logs →
           </Link>
         ) : null}
@@ -144,7 +160,7 @@ export default function TracesPageContent() {
           <p className="evx-dash__empty">Loading traces from SigNoz…</p>
         ) : filtered.length ? (
           filtered.map((trace) => (
-            <div key={trace.id} className="evx-dash__row" style={{ gridTemplateColumns: "120px 120px 90px 1fr" }}>
+            <div key={trace.id} className="evx-dash__row evx-dash__row--traces">
               <span className="evx-dash__row-meta">{trace.name}</span>
               <span className="evx-dash__row-meta">{trace.service}</span>
               <span
@@ -152,7 +168,7 @@ export default function TracesPageContent() {
               >
                 {trace.durationMs}ms
               </span>
-              <span>{trace.status.toUpperCase()}</span>
+              <span className="evx-dash__row-meta">{trace.status.toUpperCase()}</span>
             </div>
           ))
         ) : (

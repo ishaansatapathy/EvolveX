@@ -145,6 +145,8 @@ describe("buildPostmortemMarkdown", () => {
     expect(markdown).toContain("[E1] **log**");
     expect(markdown).toContain("Looks related to Redis pool exhaustion.");
     expect(markdown).toContain("72% evidence collected");
+    expect(markdown).toContain("**Case status:** open");
+    expect(markdown).toContain("**AI confidence:** medium");
   });
 
   it("builds a safe filename from short id", () => {

@@ -22,6 +22,11 @@ export default function LogsPageContent() {
   const signozStatus = trpc.telemetry.status.useQuery();
   const useCaseScope = isUuid(investigationId);
 
+  const caseMetaQuery = trpc.investigations.get.useQuery(
+    { id: investigationId ?? "" },
+    { enabled: useCaseScope },
+  );
+
   const caseQuery = trpc.investigations.logs.useQuery(
     { id: investigationId ?? "" },
     { enabled: useCaseScope },
@@ -59,11 +64,15 @@ export default function LogsPageContent() {
   return (
     <>
       <AppPageHeader kicker="⊙ SIGNAL STREAM" title="Logs">
-        {useCaseScope ? (
-          <Link href="/investigations" className="evx-dash__chip">
-            Case linked
+        {useCaseScope && caseMetaQuery.data ? (
+          <Link
+            href={`/investigations?investigation=${caseMetaQuery.data.id}`}
+            className="evx-dash__chip evx-dash__chip--back"
+          >
+            ← {caseMetaQuery.data.shortId}
           </Link>
         ) : null}
+        {useCaseScope ? <span className="evx-dash__chip">Incident window</span> : null}
         {!useCaseScope && signozStatus.data?.configured ? (
           <span className="evx-dash__chip">Live · 15m · refreshes 5s</span>
         ) : null}
@@ -98,11 +107,11 @@ export default function LogsPageContent() {
           <p className="evx-dash__empty">Loading logs from SigNoz…</p>
         ) : filtered.length ? (
           filtered.map((log) => (
-            <div key={log.id} className="evx-dash__row">
+            <div key={log.id} className="evx-dash__row evx-dash__row--logs">
               <span className="evx-dash__row-at">{log.at}</span>
               <span className={`evx-dash__row-meta evx-dash__level-${log.level.toLowerCase()}`}>{log.level}</span>
               <span className="evx-dash__row-meta">{log.service}</span>
-              <span>{log.message}</span>
+              <span className="evx-dash__row-message">{log.message}</span>
             </div>
           ))
         ) : (

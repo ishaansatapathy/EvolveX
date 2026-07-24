@@ -45,7 +45,9 @@ export function buildPostmortemMarkdown(input: PostmortemExportInput): string {
   const metadataLines = [
     `- **Case ID:** ${input.shortId}`,
     `- **Investigation:** ${input.title}`,
-    `- **Status:** ${inv.status}`,
+    `- **Pipeline status:** ${inv.status}`,
+    `- **Case status:** ${inv.caseStatus ?? "open"}`,
+    `- **AI confidence:** ${context.aiConfidence.level} — ${context.aiConfidence.rationale}`,
     `- **Severity:** ${inv.severity ?? "unknown"}`,
     `- **Primary service:** ${inv.primaryService ?? input.affectedServices[0] ?? "unknown"}`,
     `- **Affected services:** ${input.affectedServices.join(", ") || "unknown"}`,
