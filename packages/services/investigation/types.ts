@@ -118,6 +118,22 @@ export const investigationOsContextSchema = z.object({
       generatedAt: z.string(),
     })
     .nullable(),
+  evidenceCompleteness: z.object({
+    completenessPercent: z.number(),
+    canConclude: z.boolean(),
+    summary: z.string(),
+    missingForConclusion: z.array(z.string()),
+    recommendedNextSteps: z.array(z.string()),
+    sources: z.array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        status: z.enum(["collected", "missing", "unavailable", "partial"]),
+        configured: z.boolean(),
+        detail: z.string(),
+      }),
+    ),
+  }),
 });
 
 export const investigationNoteSchema = z.object({

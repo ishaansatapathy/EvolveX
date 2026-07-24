@@ -217,6 +217,69 @@ export default function InvestigationsPage() {
                 </div>
               </div>
 
+              {osContext.evidenceCompleteness ? (
+                <section className="evx-dash__context-card evx-dash__completeness-card">
+                  <p className="evx-dash__context-card-title">EVIDENCE COMPLETENESS</p>
+                  <div className="evx-dash__completeness-head">
+                    <p className="evx-dash__completeness-percent">
+                      {osContext.evidenceCompleteness.completenessPercent}%
+                    </p>
+                    <p className="evx-dash__stat-note">{osContext.evidenceCompleteness.summary}</p>
+                  </div>
+                  <div
+                    className="evx-dash__completeness-bar"
+                    role="progressbar"
+                    aria-valuenow={osContext.evidenceCompleteness.completenessPercent}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <span
+                      className="evx-dash__completeness-bar-fill"
+                      style={{ width: `${osContext.evidenceCompleteness.completenessPercent}%` }}
+                    />
+                  </div>
+                  {!osContext.evidenceCompleteness.canConclude &&
+                  osContext.evidenceCompleteness.missingForConclusion.length > 0 ? (
+                    <div className="evx-dash__completeness-block">
+                      <p className="evx-dash__completeness-label">Additional evidence required</p>
+                      <ul className="evx-dash__completeness-list">
+                        {osContext.evidenceCompleteness.missingForConclusion.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <div className="evx-dash__completeness-sources">
+                    {osContext.evidenceCompleteness.sources.map((source) => (
+                      <span
+                        key={source.id}
+                        className={`evx-dash__chip evx-dash__chip--source st-${source.status}`}
+                        title={source.detail}
+                      >
+                        {source.label}
+                        {source.status === "collected"
+                          ? " ✓"
+                          : source.status === "missing"
+                            ? " · missing"
+                            : source.status === "partial"
+                              ? " · optional"
+                              : " · n/a"}
+                      </span>
+                    ))}
+                  </div>
+                  {osContext.evidenceCompleteness.recommendedNextSteps.length > 0 ? (
+                    <div className="evx-dash__completeness-block" style={{ marginTop: "0.65rem" }}>
+                      <p className="evx-dash__completeness-label">Recommended next steps</p>
+                      <ul className="evx-dash__completeness-list">
+                        {osContext.evidenceCompleteness.recommendedNextSteps.map((step) => (
+                          <li key={step}>{step}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+
               {pinpointQuery.data?.primary ? (
                 <section className="evx-dash__context-card evx-dash__pinpoint-card">
                   <p className="evx-dash__context-card-title">📍 LIKELY CULPRIT · PINPOINT</p>

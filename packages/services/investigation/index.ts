@@ -34,8 +34,9 @@ import {
   tracesToEvidence,
 } from "./correlation";
 import { enrichEbpfFromSignozMetrics } from "../ebpf/signoz-metrics";
-import { suggestInvestigationFix } from "./fix-suggestion";
+import { computeEvidenceCompleteness } from "./evidence-completeness";
 import { computeInvestigationPinpoint, loadPinpointFileSnippet } from "./pinpoint";
+import { suggestInvestigationFix } from "./fix-suggestion";
 import { parseEbpfEvent, type EbpfEventPayload } from "../ebpf/webhook-parser";
 import { parseGithubDeployEvent, type GithubPushPayload } from "../github/webhook-parser";
 import { parseKubernetesEvent, type KubernetesEventPayload } from "../kubernetes/webhook-parser";
@@ -282,6 +283,24 @@ class InvestigationService {
     }
 
     const latestSummary = summaries[0];
+    const mappedTimeline = timeline.map(toTimelineEntry);
+    const mappedChangeEvents = changeEvents.map(
+      (item): ChangeEventRowDto => ({
+        id: item.id,
+        type: item.type,
+        service: item.service,
+        author: item.author,
+        occurredAt: item.occurredAt.toISOString(),
+        metadata: item.metadata ?? {},
+      }),
+    );
+
+    const evidenceCompleteness = computeEvidenceCompleteness({
+      timeline: mappedTimeline,
+      changeEvents: mappedChangeEvents,
+      investigationContext: (row.investigationContext as InvestigationContext | null) ?? null,
+      status: row.status,
+    });
 
     return {
       investigation: {
@@ -294,7 +313,7 @@ class InvestigationService {
         startedAt: row.startedAt?.toISOString() ?? null,
         completedAt: row.completedAt?.toISOString() ?? null,
       },
-      timeline: timeline.map(toTimelineEntry),
+      timeline: mappedTimeline,
       evidence: evidence.map(
         (item): EvidenceRowDto => ({
           id: item.id,
@@ -307,16 +326,7 @@ class InvestigationService {
           metadata: item.metadata ?? {},
         }),
       ),
-      changeEvents: changeEvents.map(
-        (item): ChangeEventRowDto => ({
-          id: item.id,
-          type: item.type,
-          service: item.service,
-          author: item.author,
-          occurredAt: item.occurredAt.toISOString(),
-          metadata: item.metadata ?? {},
-        }),
-      ),
+      changeEvents: mappedChangeEvents,
       runtimeSignals: runtimeSignals.map(
         (item): RuntimeSignalRowDto => ({
           id: item.id,
@@ -338,6 +348,7 @@ class InvestigationService {
             generatedAt: latestSummary.generatedAt.toISOString(),
           }
         : null,
+      evidenceCompleteness,
     };
   }
 
