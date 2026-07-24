@@ -10,8 +10,31 @@ type QueryRangeResponse = {
         rows?: Array<Record<string, unknown>>;
       };
     }>;
+    data?: {
+      results?: Array<{
+        rows?: Array<{ data?: Record<string, unknown>; timestamp?: string } | Record<string, unknown>> | null;
+      }>;
+    };
   };
 };
+
+/** Normalizes SigNoz v5 query_range rows (legacy table layout + current nested `data` rows). */
+export function extractQueryRangeRows(json: QueryRangeResponse): Record<string, unknown>[] {
+  const legacyRows = json.data?.result?.[0]?.table?.rows;
+  if (legacyRows?.length) return legacyRows;
+
+  const modernRows = json.data?.data?.results?.[0]?.rows;
+  if (!modernRows?.length) return [];
+
+  return modernRows.map((row) => {
+    if (row && typeof row === "object" && "data" in row && row.data && typeof row.data === "object") {
+      const nested = row.data as Record<string, unknown>;
+      const timestamp = (row as { timestamp?: string }).timestamp;
+      return timestamp && !nested.timestamp ? { ...nested, timestamp } : nested;
+    }
+    return row as Record<string, unknown>;
+  });
+}
 
 function normalizeBaseUrl(url: string) {
   return url.replace(/\/+$/, "");
@@ -166,7 +189,7 @@ export class SignozClient {
       }
 
       const json = (await response.json()) as QueryRangeResponse;
-      const rows = json.data?.result?.[0]?.table?.rows ?? [];
+      const rows = extractQueryRangeRows(json);
       return rows.map((row) => parseLogRow(row));
     } catch (err) {
       logger.warn("SigNoz logs query_range error", {
@@ -273,7 +296,7 @@ export class SignozClient {
       }
 
       const json = (await response.json()) as QueryRangeResponse;
-      const rows = json.data?.result?.[0]?.table?.rows ?? [];
+      const rows = extractQueryRangeRows(json);
       return rows.map((row) => parseTraceRow(row));
     } catch (err) {
       logger.warn("SigNoz query_range error", {

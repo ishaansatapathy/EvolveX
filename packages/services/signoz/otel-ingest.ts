@@ -177,7 +177,7 @@ export function buildMetricPayload(serviceName: string, increment: number) {
   };
 }
 
-async function postOtlp(path: "traces" | "metrics", config: OtlpIngestConfig, payload: unknown) {
+async function postOtlp(path: "traces" | "metrics" | "logs", config: OtlpIngestConfig, payload: unknown) {
   const ingestionUrl = (config.ingestionUrl ?? "https://ingest.in2.signoz.cloud").replace(/\/+$/, "");
   const response = await fetch(`${ingestionUrl}/v1/${path}`, {
     method: "POST",
@@ -211,4 +211,41 @@ export async function ingestMetrics(config: OtlpIngestConfig, serviceName: strin
   const payload = buildMetricPayload(serviceName, increment);
   const result = await postOtlp("metrics", config, payload);
   return { ...result, serviceName, increment };
+}
+
+export type LogBatchOptions = {
+  serviceName: string;
+  entries: Array<{
+    severityText: "ERROR" | "WARN" | "INFO";
+    body: string;
+    offsetMs?: number;
+  }>;
+};
+
+export function buildLogPayload(options: LogBatchOptions) {
+  return {
+    resourceLogs: [
+      {
+        resource: {
+          attributes: [{ key: "service.name", value: { stringValue: options.serviceName } }],
+        },
+        scopeLogs: [
+          {
+            scope: { name: "evolvex-loadgen", version: "1.0.0" },
+            logRecords: options.entries.map((entry) => ({
+              timeUnixNano: nowNano(entry.offsetMs ?? 0),
+              severityText: entry.severityText,
+              body: { stringValue: entry.body },
+            })),
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export async function ingestLogs(config: OtlpIngestConfig, options: LogBatchOptions) {
+  const payload = buildLogPayload(options);
+  const result = await postOtlp("logs", config, payload);
+  return { ...result, serviceName: options.serviceName, count: options.entries.length };
 }

@@ -169,7 +169,7 @@ export default function InvestigationsPageContent() {
   const summaryText =
     osContext?.investigation.summary ??
     (osContext?.investigation.status === "building"
-      ? "Collecting evidence from SigNozΓÇª"
+      ? "Collecting evidence from SigNoz…"
       : "No context generated yet.");
 
   function scrollWithinDetail(element: HTMLElement | null, offset = 88) {
@@ -241,8 +241,39 @@ export default function InvestigationsPageContent() {
   if (listQuery.isLoading) {
     return (
       <>
-        <AppPageHeader kicker="ΓèÖ ACTIVE CASE FILES" title="Investigations" />
-        <p className="evx-dash__stat-note">Loading investigationsΓÇª</p>
+        <AppPageHeader kicker="⊙ ACTIVE CASE FILES" title="Investigations" />
+        <p className="evx-dash__stat-note">Loading investigations…</p>
+      </>
+    );
+  }
+
+  if (listQuery.isError) {
+    const needsSignIn =
+      listQuery.error.data?.code === "UNAUTHORIZED" ||
+      listQuery.error.message.toLowerCase().includes("not authenticated");
+
+    return (
+      <>
+        <AppPageHeader kicker="⊙ ACTIVE CASE FILES" title="Investigations" />
+        <section className="evx-dash__settings-card" style={{ marginTop: "1rem" }}>
+          <p className="evx-dash__settings-label">{needsSignIn ? "SESSION EXPIRED" : "COULD NOT LOAD CASES"}</p>
+          <p className="evx-dash__settings-value">
+            {needsSignIn
+              ? "Sign in again to load your investigation queue."
+              : listQuery.error.message}
+          </p>
+          <div className="evx-dash__cause-actions" style={{ marginTop: "1rem" }}>
+            {needsSignIn ? (
+              <Link href="/signin" className="evx-dash__btn-primary">
+                Sign in →
+              </Link>
+            ) : (
+              <button type="button" className="evx-dash__btn-primary" onClick={() => void listQuery.refetch()}>
+                Retry →
+              </button>
+            )}
+          </div>
+        </section>
       </>
     );
   }
@@ -250,10 +281,10 @@ export default function InvestigationsPageContent() {
   if (investigations.length === 0) {
     return (
       <>
-        <AppPageHeader kicker="ΓèÖ ACTIVE CASE FILES" title="Investigations" />
+        <AppPageHeader kicker="⊙ ACTIVE CASE FILES" title="Investigations" />
         <section className="evx-dash__settings-card" style={{ marginTop: "1rem" }}>
           <p className="evx-dash__settings-label">NO CASES YET</p>
-          <p className="evx-dash__settings-value">Connect SigNoz Cloud ΓÇö or seed a demo case locally</p>
+          <p className="evx-dash__settings-value">Connect SigNoz Cloud — or seed a demo case locally</p>
           <p className="evx-dash__stat-note" style={{ marginTop: "0.75rem" }}>
             <strong>Fastest demo:</strong> in a new terminal run <code>pnpm investigation:seed</code>, then refresh this page.
             <br />
@@ -274,10 +305,10 @@ export default function InvestigationsPageContent() {
               className="evx-dash__btn-primary"
               onClick={() => void listQuery.refetch()}
             >
-              Refresh cases ΓåÆ
+              Refresh cases →
             </button>
             <Link href="/settings" className="evx-dash__btn-ghost">
-              Integration health ΓåÆ
+              Integration health →
             </Link>
           </div>
         </section>
@@ -288,7 +319,7 @@ export default function InvestigationsPageContent() {
   return (
     <div className="evx-dash__investigations-layout">
       <AppPageHeader
-        kicker="ΓèÖ ACTIVE CASE FILES"
+        kicker="⊙ ACTIVE CASE FILES"
         title="Investigations"
         subtitle={`${investigations.length} case${investigations.length === 1 ? "" : "s"} ┬╖ SigNoz alerts`}
       />
@@ -334,7 +365,7 @@ export default function InvestigationsPageContent() {
                       {evidencePercent !== null ? (
                         <span className="evx-dash__incident-evidence">{evidencePercent}% evidence</span>
                       ) : inc.status === "building" ? (
-                        <span className="evx-dash__incident-evidence is-building">collectingΓÇª</span>
+                        <span className="evx-dash__incident-evidence is-building">collecting…</span>
                       ) : null}
                     </span>
                   </button>
@@ -346,7 +377,7 @@ export default function InvestigationsPageContent() {
         right={
           <div ref={detailScrollRef} className="evx-dash__detail evx-dash__detail--case evx-dash__detail--scroll">
           {contextQuery.isLoading && !osContext ? (
-            <p className="evx-dash__stat-note">Loading case context from PostgresΓÇª</p>
+            <p className="evx-dash__stat-note">Loading case context from Postgres…</p>
           ) : osContext && activeListItem ? (
             <div className="evx-dash__case-shell">
               <header className="evx-dash__case-hero">
@@ -404,7 +435,7 @@ export default function InvestigationsPageContent() {
                           disabled={exportingPostmortem}
                           onClick={() => void handleDownloadPostmortem()}
                         >
-                          {exportingPostmortem ? "ExportingΓÇª" : "Download postmortem"}
+                          {exportingPostmortem ? "Exporting…" : "Download postmortem"}
                         </button>
                         <button
                           type="button"
@@ -433,7 +464,7 @@ export default function InvestigationsPageContent() {
                     />
                   ) : (
                     <section className="evx-dash__cause evx-dash__cause--story">
-                      <p className="evx-dash__cause-kicker">Γ£ª INCIDENT STORY</p>
+                      <p className="evx-dash__cause-kicker">✦ INCIDENT STORY</p>
                       <p className="evx-dash__cause-text">{summaryText}</p>
                     </section>
                   )}
@@ -441,7 +472,7 @@ export default function InvestigationsPageContent() {
                   {osContext.llmSummary ? (
                     <section className="evx-dash__cause evx-dash__cause--ai">
                       <div className="evx-dash__cause-ai-head">
-                        <p className="evx-dash__cause-kicker">Γ£ª AI ROOT CAUSE</p>
+                        <p className="evx-dash__cause-kicker">✦ AI ROOT CAUSE</p>
                         <AiConfidenceBadge
                           level={osContext.aiConfidence.level}
                           rationale={osContext.aiConfidence.rationale}
@@ -465,14 +496,14 @@ export default function InvestigationsPageContent() {
                             disabled={regenerateSummaryMutation.isPending}
                             onClick={() => activeId && regenerateSummaryMutation.mutate({ id: activeId })}
                           >
-                            {regenerateSummaryMutation.isPending ? "RegeneratingΓÇª" : "Regenerate"}
+                            {regenerateSummaryMutation.isPending ? "Regenerating…" : "Regenerate"}
                           </button>
                         ) : null}
                       </div>
                     </section>
                   ) : osContext.investigation.status === "ready" ? (
                     <section className="evx-dash__cause evx-dash__cause--ai">
-                      <p className="evx-dash__cause-kicker">Γ£ª AI ROOT CAUSE</p>
+                      <p className="evx-dash__cause-kicker">✦ AI ROOT CAUSE</p>
                       <p className="evx-dash__cause-text">
                         No LLM summary yet. Configure OPENAI_API_KEY and generate from collected evidence.
                       </p>
@@ -483,7 +514,7 @@ export default function InvestigationsPageContent() {
                           disabled={regenerateSummaryMutation.isPending}
                           onClick={() => activeId && regenerateSummaryMutation.mutate({ id: activeId })}
                         >
-                          {regenerateSummaryMutation.isPending ? "GeneratingΓÇª" : "Generate summary"}
+                          {regenerateSummaryMutation.isPending ? "Generating…" : "Generate summary"}
                         </button>
                       </div>
                     </section>
@@ -497,7 +528,7 @@ export default function InvestigationsPageContent() {
                   <section className="evx-dash__context-card evx-dash__ebpf-card">
                     <p className="evx-dash__context-card-title">KERNEL SIGNALS ┬╖ EBPF</p>
                     <p className="evx-dash__stat-note">
-                      Tail latency case ΓÇö kernel/network metrics can explain p99 degradation beyond trace averages.
+                      Tail latency case — kernel/network metrics can explain p99 degradation beyond trace averages.
                     </p>
                     <button
                       type="button"
@@ -507,7 +538,7 @@ export default function InvestigationsPageContent() {
                       onClick={() => activeId && triggerEbpfMutation.mutate({ id: activeId })}
                     >
                       {triggerEbpfMutation.isPending
-                        ? "CollectingΓÇª"
+                        ? "Collecting…"
                         : osContext.ebpfEnrichment.canTrigger
                           ? "Collect eBPF signals from SigNoz"
                           : "SigNoz not configured"}
@@ -559,7 +590,7 @@ export default function InvestigationsPageContent() {
                           >
                             {source.label}
                             {source.status === "collected"
-                              ? " Γ£ô"
+                              ? " ✓"
                               : source.status === "missing"
                                 ? " ┬╖ missing"
                                 : source.status === "partial"
@@ -629,7 +660,7 @@ export default function InvestigationsPageContent() {
                           rel="noreferrer"
                           className="evx-dash__btn-ghost"
                         >
-                          GitHub ΓåÆ
+                          GitHub →
                         </a>
                       ) : null}
                       <button
@@ -642,7 +673,7 @@ export default function InvestigationsPageContent() {
                           if (result) setFixPreview(result.patch);
                         }}
                       >
-                        {suggestFixMutation.isPending ? "AnalyzingΓÇª" : "Suggest fix"}
+                        {suggestFixMutation.isPending ? "Analyzing…" : "Suggest fix"}
                       </button>
                     </div>
                     {pinpointQuery.data.deployCorrelation ? (
@@ -671,7 +702,7 @@ export default function InvestigationsPageContent() {
                     ) : null}
                   </section>
                 ) : pinpointQuery.isLoading ? (
-                  <p className="evx-dash__stat-note">Scanning logs for file:line pinpointΓÇª</p>
+                  <p className="evx-dash__stat-note">Scanning logs for file:line pinpoint…</p>
                 ) : (
                   <p className="evx-dash__stat-note">Pinpoint analysis will appear when the case is ready.</p>
                 )}
@@ -695,7 +726,7 @@ export default function InvestigationsPageContent() {
                             <span className={`evx-dash__chip k-${ev.kind.toLowerCase()}`}>{ev.kind}</span>
                           </div>
                           <p className="evx-dash__narrative-sentence">
-                            <strong>{ev.title}</strong> ΓÇö {ev.detail}
+                            <strong>{ev.title}</strong> — {ev.detail}
                             {ev.source ? <span className="evx-dash__event-source"> ┬╖ {ev.source}</span> : null}
                           </p>
                         </li>
@@ -735,7 +766,7 @@ export default function InvestigationsPageContent() {
                       <input
                         className="evx-dash__input"
                         style={{ flex: 1 }}
-                        placeholder="Looks related to Redis poolΓÇª"
+                        placeholder="Looks related to Redis pool…"
                         value={noteDraft}
                         onChange={(e) => setNoteDraft(e.target.value)}
                       />
@@ -761,7 +792,7 @@ export default function InvestigationsPageContent() {
                         ))}
                         {osContext.dependencies.edges.map((edge) => (
                           <span key={edge.id} className="evx-dash__dep-arrow">
-                            {edge.source} ΓåÆ {edge.destination}
+                            {edge.source} → {edge.destination}
                           </span>
                         ))}
                       </div>

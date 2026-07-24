@@ -4,7 +4,7 @@ import {
   loadGeneratorConfigFromEnv,
   SignozLoadGenerator,
 } from "../packages/services/signoz/load-generator.ts";
-import { ingestMetrics, ingestTraces } from "../packages/services/signoz/otel-ingest.ts";
+import { ingestLogs, ingestMetrics, ingestTraces } from "../packages/services/signoz/otel-ingest.ts";
 import { getDefaultServiceName } from "../packages/services/signoz-env.ts";
 
 function parseArgs() {
@@ -24,6 +24,15 @@ async function runOnce(mode: "baseline" | "spike" | "p99") {
 
   const serviceName = getDefaultServiceName();
   const config = { ingestionKey, ingestionUrl: process.env.SIGNOZ_INGESTION_URL };
+
+  await ingestLogs(config, {
+    serviceName,
+    entries: [
+      { severityText: "ERROR", body: "Redis connection timeout during checkout batch", offsetMs: -1000 },
+      { severityText: "WARN", body: "Inventory lock contention on payments-svc", offsetMs: -2000 },
+      { severityText: "INFO", body: "Checkout pipeline started", offsetMs: -3000 },
+    ],
+  });
 
   if (mode === "p99") {
     await ingestTraces(config, {
