@@ -24,7 +24,8 @@ export function CaseStatusControls({ value, disabled, onChange }: CaseStatusCont
           type="button"
           className={`evx-dash__case-status-btn st-${option.value} ${value === option.value ? "is-active" : ""}`}
           disabled={disabled}
-          onClick={() => onChange(option.value)}
+          onClick={() => onChange(value === option.value ? "open" : option.value)}
+          aria-pressed={value === option.value}
         >
           {option.label}
         </button>
