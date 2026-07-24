@@ -2,12 +2,14 @@ import { router } from "./trpc";
 
 import { healthRouter } from "./routes/health/route";
 import { authRouter } from "./routes/auth/route";
+import { integrationsRouter } from "./routes/integrations/route";
 import { investigationsRouter } from "./routes/investigations/route";
 import { telemetryRouter } from "./routes/telemetry/route";
 
 export const serverRouter = router({
   health: healthRouter,
   auth: authRouter,
+  integrations: integrationsRouter,
   investigations: investigationsRouter,
   telemetry: telemetryRouter,
 });

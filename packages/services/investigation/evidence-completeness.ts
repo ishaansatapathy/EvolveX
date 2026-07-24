@@ -1,5 +1,10 @@
 import { isGithubApiConfigured } from "../github/api";
 import { isOpenAiConfigured } from "../ai/openai";
+import {
+  isEbpfWebhookConfigured,
+  isGithubWebhookConfigured,
+  isKubernetesWebhookConfigured,
+} from "../integrations/config";
 import { isSignozConfigured } from "../signoz-env";
 import type {
   ChangeEventRowDto,
@@ -39,18 +44,6 @@ export type EvidenceCompletenessResult = {
 
 const MIN_LOG_TIMELINE = 1;
 const MIN_TRACE_TIMELINE = 1;
-
-function isGithubWebhookConfigured() {
-  return Boolean(process.env.GITHUB_WEBHOOK_SECRET?.trim());
-}
-
-function isKubernetesWebhookConfigured() {
-  return Boolean(process.env.KUBERNETES_WEBHOOK_SECRET?.trim());
-}
-
-function isEbpfWebhookConfigured() {
-  return Boolean(process.env.EBPF_WEBHOOK_SECRET?.trim());
-}
 
 function timelineKinds(timeline: TimelineEntryDto[]) {
   return new Set(timeline.map((entry) => entry.kind.toUpperCase()));
