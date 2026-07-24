@@ -6,6 +6,7 @@ import { useMemo, useRef, useState } from "react";
 import { AppPageHeader } from "~/components/evolvex/app-shell";
 import { EvidenceCitationMarkdown } from "~/components/evolvex/evidence-citation-markdown";
 import { IncidentNarrativePanel } from "~/components/evolvex/incident-narrative-panel";
+import { InvestigationCaseNav } from "~/components/evolvex/investigation-case-nav";
 import { StructuredEvidencePanel } from "~/components/evolvex/structured-evidence-panel";
 import { trpc } from "~/trpc/client";
 
@@ -49,6 +50,7 @@ function mapSeverity(value: string | null | undefined) {
 
 export default function InvestigationsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const detailScrollRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
   const listQuery = trpc.investigations.list.useQuery(
@@ -105,17 +107,6 @@ export default function InvestigationsPage() {
     { enabled: Boolean(activeId) && osContext?.investigation.status === "ready" },
   );
 
-  const stats = useMemo(() => {
-    const open = investigations.length;
-    const building = investigations.filter((item) => item.status === "building").length;
-    const ready = investigations.filter((item) => item.status === "ready").length;
-    return [
-      { label: "ACTIVE CASES", value: String(open), note: "From SigNoz alerts" },
-      { label: "BUILDING", value: String(building), note: "Collecting evidence" },
-      { label: "READY", value: String(ready), note: "Timeline available" },
-    ];
-  }, [investigations]);
-
   const timelineCitationRefById = useMemo(() => {
     const map = new Map<string, string>();
     for (const citation of osContext?.evidenceCitations.citations ?? []) {
@@ -142,14 +133,31 @@ export default function InvestigationsPage() {
       ? "Collecting evidence from SigNoz…"
       : "No context generated yet.");
 
+  function scrollWithinDetail(element: HTMLElement | null, offset = 88) {
+    const container = detailScrollRef.current;
+    if (!container || !element) return;
+
+    const containerTop = container.getBoundingClientRect().top;
+    const elementTop = element.getBoundingClientRect().top;
+    container.scrollBy({ top: elementTop - containerTop - offset, behavior: "smooth" });
+  }
+
+  function scrollToSection(sectionId: string) {
+    if (sectionId === "case-timeline") {
+      scrollToTimeline();
+      return;
+    }
+    scrollWithinDetail(document.getElementById(sectionId));
+  }
+
   function scrollToTimeline() {
-    timelineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    scrollWithinDetail(timelineRef.current);
   }
 
   function scrollToTimelineEntry(entryId: string) {
     const entry = timelineRef.current?.querySelector(`[data-timeline-entry-id="${entryId}"]`);
     if (entry instanceof HTMLElement) {
-      entry.scrollIntoView({ behavior: "smooth", block: "center" });
+      scrollWithinDetail(entry, 48);
       entry.classList.add("is-citation-highlight");
       window.setTimeout(() => entry.classList.remove("is-citation-highlight"), 2200);
       return;
@@ -239,21 +247,15 @@ export default function InvestigationsPage() {
   }
 
   return (
-    <>
-      <AppPageHeader kicker="⊙ ACTIVE CASE FILES" title="Investigations" />
+    <div className="evx-dash__investigations-layout">
+      <AppPageHeader
+        kicker="⊙ ACTIVE CASE FILES"
+        title="Investigations"
+        subtitle={`${investigations.length} case${investigations.length === 1 ? "" : "s"} · SigNoz alerts`}
+      />
 
-      <section className="evx-dash__stats">
-        {stats.map((stat) => (
-          <article key={stat.label} className="evx-dash__stat">
-            <p className="evx-dash__stat-label">{stat.label}</p>
-            <p className="evx-dash__stat-value">{stat.value}</p>
-            <p className="evx-dash__stat-note">{stat.note}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className="evx-dash__grid">
-        <div className="evx-dash__incidents">
+      <section className="evx-dash__grid evx-dash__grid--investigations">
+        <div className="evx-dash__incidents evx-dash__incidents--fixed">
           <p className="evx-dash__panel-label">INCIDENT QUEUE</p>
           {investigations.map((inc) => (
             <button
@@ -276,370 +278,433 @@ export default function InvestigationsPage() {
           ))}
         </div>
 
-        <div className="evx-dash__detail">
+        <div ref={detailScrollRef} className="evx-dash__detail evx-dash__detail--case evx-dash__detail--scroll">
           {contextQuery.isLoading && !osContext ? (
             <p className="evx-dash__stat-note">Loading case context from Postgres…</p>
           ) : osContext && activeListItem ? (
-            <>
-              <p className="evx-dash__panel-label">
-                CASE FILE — <span>{activeListItem.shortId}</span>
-                {osContext.investigation.incidentId ? (
-                  <span style={{ marginLeft: "0.5rem", opacity: 0.6 }}>· {osContext.investigation.incidentId}</span>
-                ) : null}
-              </p>
+            <div className="evx-dash__case-shell">
+              <header className="evx-dash__case-hero">
+                <div className="evx-dash__case-hero-top">
+                  <div className="evx-dash__case-hero-main">
+                    <p className="evx-dash__case-hero-kicker">
+                      {activeListItem.shortId} · {primaryService}
+                      {osContext.investigation.incidentId ? ` · ${osContext.investigation.incidentId}` : ""}
+                    </p>
+                    <h2 className="evx-dash__case-hero-title">{activeListItem.title}</h2>
+                  </div>
+                  <div className="evx-dash__case-hero-badges">
+                    <span className={`evx-dash__chip evx-dash__case-status st-${mapUiStatus(activeListItem.status).toLowerCase()}`}>
+                      {mapUiStatus(activeListItem.status)}
+                    </span>
+                    {osContext.evidenceCompleteness ? (
+                      <span
+                        className="evx-dash__chip evx-dash__case-completeness"
+                        title={osContext.evidenceCompleteness.summary}
+                      >
+                        {osContext.evidenceCompleteness.completenessPercent}% evidence
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
 
-              <div className="evx-dash__cause">
-                <p className="evx-dash__cause-kicker">✦ INVESTIGATION CONTEXT</p>
-                <p className="evx-dash__cause-text">{summaryText}</p>
-                <div className="evx-dash__cause-actions">
+                <InvestigationCaseNav onJump={scrollToSection} />
+
+                <div className="evx-dash__case-hero-actions">
                   <button type="button" className="evx-dash__btn-primary" onClick={scrollToTimeline}>
-                    Open Timeline
+                    Open timeline
                   </button>
                   <Link href={`/logs?investigation=${activeListItem.id}&service=${primaryService}`} className="evx-dash__btn-ghost">
-                    View Logs →
+                    Logs
                   </Link>
                   <Link href={`/traces?investigation=${activeListItem.id}&service=${primaryService}`} className="evx-dash__btn-ghost">
-                    View Traces →
+                    Traces
                   </Link>
                   {timeline.length > 0 ? (
-                    <>
-                      <button
-                        type="button"
-                        className="evx-dash__btn-ghost"
-                        disabled={exportingPostmortem}
-                        onClick={() => void handleDownloadPostmortem()}
-                      >
-                        {exportingPostmortem ? "Exporting…" : "Export postmortem ↓"}
-                      </button>
-                      <button
-                        type="button"
-                        className="evx-dash__btn-ghost"
-                        disabled={exportingPostmortem}
-                        onClick={() => void handleCopyPostmortem()}
-                      >
-                        Copy postmortem
-                      </button>
-                    </>
+                    <details className="evx-dash__case-more-menu">
+                      <summary className="evx-dash__btn-ghost">Export</summary>
+                      <div className="evx-dash__case-more-menu-panel">
+                        <button
+                          type="button"
+                          className="evx-dash__btn-ghost"
+                          disabled={exportingPostmortem}
+                          onClick={() => void handleDownloadPostmortem()}
+                        >
+                          {exportingPostmortem ? "Exporting…" : "Download postmortem"}
+                        </button>
+                        <button
+                          type="button"
+                          className="evx-dash__btn-ghost"
+                          disabled={exportingPostmortem}
+                          onClick={() => void handleCopyPostmortem()}
+                        >
+                          Copy markdown
+                        </button>
+                      </div>
+                    </details>
                   ) : null}
                 </div>
-              </div>
+              </header>
 
-              {osContext.incidentNarrative ? (
-                <IncidentNarrativePanel
-                  summary={osContext.incidentNarrative.summary}
-                  beats={osContext.incidentNarrative.beats}
-                  empty={osContext.incidentNarrative.empty}
-                  onCitationClick={scrollToTimelineEntry}
-                />
-              ) : null}
-
-              {osContext.evidenceCompleteness ? (
-                <section className="evx-dash__context-card evx-dash__completeness-card">
-                  <p className="evx-dash__context-card-title">EVIDENCE COMPLETENESS</p>
-                  <div className="evx-dash__completeness-head">
-                    <p className="evx-dash__completeness-percent">
-                      {osContext.evidenceCompleteness.completenessPercent}%
-                    </p>
-                    <p className="evx-dash__stat-note">{osContext.evidenceCompleteness.summary}</p>
-                  </div>
-                  <div
-                    className="evx-dash__completeness-bar"
-                    role="progressbar"
-                    aria-valuenow={osContext.evidenceCompleteness.completenessPercent}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                  >
-                    <span
-                      className="evx-dash__completeness-bar-fill"
-                      style={{ width: `${osContext.evidenceCompleteness.completenessPercent}%` }}
-                    />
-                  </div>
-                  {!osContext.evidenceCompleteness.canConclude &&
-                  osContext.evidenceCompleteness.missingForConclusion.length > 0 ? (
-                    <div className="evx-dash__completeness-block">
-                      <p className="evx-dash__completeness-label">Additional evidence required</p>
-                      <ul className="evx-dash__completeness-list">
-                        {osContext.evidenceCompleteness.missingForConclusion.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  <div className="evx-dash__completeness-sources">
-                    {osContext.evidenceCompleteness.sources.map((source) => (
-                      <span
-                        key={source.id}
-                        className={`evx-dash__chip evx-dash__chip--source st-${source.status}`}
-                        title={source.detail}
-                      >
-                        {source.label}
-                        {source.status === "collected"
-                          ? " ✓"
-                          : source.status === "missing"
-                            ? " · missing"
-                            : source.status === "partial"
-                              ? " · optional"
-                              : " · n/a"}
-                      </span>
-                    ))}
-                  </div>
-                  {osContext.evidenceCompleteness.recommendedNextSteps.length > 0 ? (
-                    <div className="evx-dash__completeness-block" style={{ marginTop: "0.65rem" }}>
-                      <p className="evx-dash__completeness-label">Recommended next steps</p>
-                      <ul className="evx-dash__completeness-list">
-                        {osContext.evidenceCompleteness.recommendedNextSteps.map((step) => (
-                          <li key={step}>{step}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </section>
-              ) : null}
-
-              {osContext.structuredEvidence ? (
-                <StructuredEvidencePanel
-                  sections={osContext.structuredEvidence.sections}
-                  onCitationClick={scrollToTimelineEntry}
-                />
-              ) : null}
-
-              {pinpointQuery.data?.primary ? (
-                <section className="evx-dash__context-card evx-dash__pinpoint-card">
-                  <p className="evx-dash__context-card-title">📍 LIKELY CULPRIT · PINPOINT</p>
-                  <p className="evx-dash__pinpoint-file">
-                    {pinpointQuery.data.primary.file}
-                    {pinpointQuery.data.primary.line > 0 ? `:${pinpointQuery.data.primary.line}` : ""}
-                  </p>
-                  <p className="evx-dash__stat-note">{pinpointQuery.data.primary.evidence}</p>
-                  <div className="evx-dash__toolbar" style={{ marginTop: "0.65rem" }}>
-                    <span className={`evx-dash__chip evx-dash__chip--${pinpointQuery.data.primary.confidence}`}>
-                      {pinpointQuery.data.primary.confidence} confidence
-                    </span>
-                    <span className="evx-dash__chip">{pinpointQuery.data.primary.source.replace("_", " ")}</span>
-                    {pinpointQuery.data.primary.githubUrl ? (
-                      <a
-                        href={pinpointQuery.data.primary.githubUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="evx-dash__btn-ghost"
-                      >
-                        View on GitHub →
-                      </a>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="evx-dash__btn-primary"
-                      disabled={suggestFixMutation.isPending}
-                      onClick={async () => {
-                        if (!activeId) return;
-                        const result = await suggestFixMutation.mutateAsync({ id: activeId });
-                        if (result) setFixPreview(result.patch);
-                      }}
-                    >
-                      {suggestFixMutation.isPending ? "Analyzing…" : "Suggest fix →"}
-                    </button>
-                  </div>
-                  {pinpointQuery.data.deployCorrelation ? (
-                    <p className="evx-dash__stat-note" style={{ marginTop: "0.45rem" }}>
-                      Deploy:{" "}
-                      <a href={pinpointQuery.data.deployCorrelation.url} target="_blank" rel="noreferrer">
-                        {pinpointQuery.data.deployCorrelation.repo}@{pinpointQuery.data.deployCorrelation.sha.slice(0, 7)}
-                      </a>
-                      {pinpointQuery.data.deployCorrelation.changedFiles.length
-                        ? ` · ${pinpointQuery.data.deployCorrelation.changedFiles.slice(0, 4).join(", ")}`
-                        : null}
-                    </p>
-                  ) : null}
-                  {fixPreview ? (
-                    <pre className="evx-dash__fix-preview">{fixPreview}</pre>
-                  ) : null}
-                  {fixPreview ? (
-                    <button
-                      type="button"
-                      className="evx-dash__btn-ghost"
-                      style={{ marginTop: "0.5rem" }}
-                      onClick={() => void navigator.clipboard.writeText(fixPreview)}
-                    >
-                      Copy patch
-                    </button>
-                  ) : null}
-                </section>
-              ) : pinpointQuery.isLoading ? (
-                <p className="evx-dash__stat-note">Scanning logs for file:line pinpoint…</p>
-              ) : null}
-
-              {osContext.llmSummary ? (
-                <section className="evx-dash__cause" style={{ transform: "rotate(0.4deg)" }}>
-                  <p className="evx-dash__cause-kicker">✦ AI ROOT CAUSE · OPENAI</p>
-                  <div className="evx-dash__cause-text">
-                    <EvidenceCitationMarkdown
-                      markdown={osContext.llmSummary.markdown}
-                      citations={osContext.evidenceCitations.citations}
+              <section id="case-story" className="evx-dash__case-section">
+                <p className="evx-dash__case-section-label">Story</p>
+                <div className="evx-dash__case-story-stack">
+                  {osContext.incidentNarrative ? (
+                    <IncidentNarrativePanel
+                      variant="summary"
+                      summary={osContext.incidentNarrative.summary || summaryText}
+                      beats={osContext.incidentNarrative.beats}
+                      empty={osContext.incidentNarrative.empty}
                       onCitationClick={scrollToTimelineEntry}
                     />
-                  </div>
-                  <p className="evx-dash__stat-note" style={{ marginTop: "0.5rem", color: "rgba(17,17,17,0.55)" }}>
-                    Generated {formatRelativeTime(osContext.llmSummary.generatedAt)} · click [T1]/[E1] citations to jump to timeline
-                  </p>
-                </section>
-              ) : osContext.investigation.status === "ready" ? (
-                <section className="evx-dash__context-card">
-                  <p className="evx-dash__context-card-title">AI SUMMARY</p>
-                  <p className="evx-dash__stat-note">
-                    No LLM summary yet. Configure OPENAI_API_KEY and regenerate from collected evidence.
-                  </p>
-                  <button
-                    type="button"
-                    className="evx-dash__btn-primary"
-                    style={{ marginTop: "0.6rem" }}
-                    disabled={regenerateSummaryMutation.isPending}
-                    onClick={() => activeId && regenerateSummaryMutation.mutate({ id: activeId })}
-                  >
-                    {regenerateSummaryMutation.isPending ? "Generating…" : "Generate summary →"}
-                  </button>
-                </section>
-              ) : null}
+                  ) : (
+                    <section className="evx-dash__cause evx-dash__cause--story">
+                      <p className="evx-dash__cause-kicker">✦ INCIDENT STORY</p>
+                      <p className="evx-dash__cause-text">{summaryText}</p>
+                    </section>
+                  )}
 
-              {osContext.investigation.status === "ready" && osContext.llmSummary ? (
-                <button
-                  type="button"
-                  className="evx-dash__btn-ghost"
-                  style={{ width: "fit-content" }}
-                  disabled={regenerateSummaryMutation.isPending}
-                  onClick={() => activeId && regenerateSummaryMutation.mutate({ id: activeId })}
-                >
-                  Regenerate AI summary
-                </button>
-              ) : null}
-
-              <section className="evx-dash__context-card">
-                <p className="evx-dash__context-card-title">ENGINEER NOTES</p>
-                {notesQuery.data?.length ? (
-                  <div className="evx-dash__table" style={{ marginBottom: "0.75rem" }}>
-                    {notesQuery.data.map((note) => (
-                      <div key={note.id} className="evx-dash__row" style={{ gridTemplateColumns: "1fr 72px" }}>
-                        <span className="evx-dash__event-text">{note.body}</span>
-                        <span className="evx-dash__event-at">{formatRelativeTime(note.createdAt)}</span>
+                  {osContext.llmSummary ? (
+                    <section className="evx-dash__cause evx-dash__cause--ai">
+                      <p className="evx-dash__cause-kicker">✦ AI ROOT CAUSE</p>
+                      <div className="evx-dash__cause-text">
+                        <EvidenceCitationMarkdown
+                          markdown={osContext.llmSummary.markdown}
+                          citations={osContext.evidenceCitations.citations}
+                          onCitationClick={scrollToTimelineEntry}
+                        />
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="evx-dash__stat-note" style={{ marginBottom: "0.75rem" }}>
-                    No notes yet. Add context for your team.
-                  </p>
-                )}
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!activeId || !noteDraft.trim()) return;
-                    createNoteMutation.mutate({ investigationId: activeId, body: noteDraft.trim() });
-                  }}
-                  className="evx-dash__toolbar"
-                >
-                  <input
-                    className="evx-dash__input"
-                    style={{ flex: 1 }}
-                    placeholder="Looks related to Redis pool…"
-                    value={noteDraft}
-                    onChange={(e) => setNoteDraft(e.target.value)}
-                  />
-                  <button type="submit" className="evx-dash__btn-primary" disabled={createNoteMutation.isPending}>
-                    Add note
-                  </button>
-                </form>
+                      <div className="evx-dash__cause-footer">
+                        <p className="evx-dash__cause-meta">
+                          Generated {formatRelativeTime(osContext.llmSummary.generatedAt)} · click [T1]/[E1] to jump
+                        </p>
+                        {osContext.investigation.status === "ready" ? (
+                          <button
+                            type="button"
+                            className="evx-dash__btn-ghost"
+                            disabled={regenerateSummaryMutation.isPending}
+                            onClick={() => activeId && regenerateSummaryMutation.mutate({ id: activeId })}
+                          >
+                            {regenerateSummaryMutation.isPending ? "Regenerating…" : "Regenerate"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </section>
+                  ) : osContext.investigation.status === "ready" ? (
+                    <section className="evx-dash__cause evx-dash__cause--ai">
+                      <p className="evx-dash__cause-kicker">✦ AI ROOT CAUSE</p>
+                      <p className="evx-dash__cause-text">
+                        No LLM summary yet. Configure OPENAI_API_KEY and generate from collected evidence.
+                      </p>
+                      <div className="evx-dash__cause-actions">
+                        <button
+                          type="button"
+                          className="evx-dash__btn-primary"
+                          disabled={regenerateSummaryMutation.isPending}
+                          onClick={() => activeId && regenerateSummaryMutation.mutate({ id: activeId })}
+                        >
+                          {regenerateSummaryMutation.isPending ? "Generating…" : "Generate summary"}
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
+                </div>
               </section>
 
-              <div className="evx-dash__timeline" ref={timelineRef}>
-                <p className="evx-dash__timeline-label">EVIDENCE TIMELINE · POSTGRES</p>
-                {timeline.length === 0 ? (
-                  <p className="evx-dash__stat-note">Timeline entries will appear as evidence is collected.</p>
-                ) : (
-                  timeline.map((ev) => (
-                    <div key={ev.id} className="evx-dash__event" data-timeline-entry-id={ev.id}>
-                      <span className="evx-dash__event-at">{formatEventTime(ev.occurredAt)}</span>
-                      {timelineCitationRefById.get(ev.id) ? (
-                        <span className="evx-dash__citation-badge">{timelineCitationRefById.get(ev.id)}</span>
-                      ) : null}
-                      <span className={`evx-dash__event-kind k-${ev.kind.toLowerCase()}`}>{ev.kind}</span>
-                      <span className="evx-dash__event-text">
-                        <strong>{ev.title}</strong> — {ev.detail}
-                        {ev.source ? <span style={{ opacity: 0.55 }}> · {ev.source}</span> : null}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {osContext.dependencies.nodes.length > 0 ? (
-                <section className="evx-dash__context-section">
-                  <p className="evx-dash__timeline-label">DEPENDENCY GRAPH</p>
-                  <div className="evx-dash__dep-flow">
-                    {osContext.dependencies.nodes.map((node) => (
-                      <span
-                        key={node.id}
-                        className={`evx-dash__dep-node ${node.healthy ? "is-healthy" : "is-unhealthy"}`}
-                        title={node.latencyMs ? `${node.latencyMs}ms` : undefined}
+              <section id="case-evidence" className="evx-dash__case-section">
+                <p className="evx-dash__case-section-label">Evidence</p>
+                {osContext.incidentNarrative && !osContext.incidentNarrative.empty ? (
+                  <IncidentNarrativePanel
+                    variant="chronology"
+                    summary={osContext.incidentNarrative.summary}
+                    beats={osContext.incidentNarrative.beats}
+                    empty={osContext.incidentNarrative.empty}
+                    onCitationClick={scrollToTimelineEntry}
+                  />
+                ) : null}
+                <div className="evx-dash__case-split">
+                  {osContext.evidenceCompleteness ? (
+                    <section className="evx-dash__context-card evx-dash__completeness-card evx-dash__completeness-card--compact">
+                      <p className="evx-dash__context-card-title">Completeness</p>
+                      <div className="evx-dash__completeness-head">
+                        <p className="evx-dash__completeness-percent">
+                          {osContext.evidenceCompleteness.completenessPercent}%
+                        </p>
+                        <p className="evx-dash__stat-note">{osContext.evidenceCompleteness.summary}</p>
+                      </div>
+                      <div
+                        className="evx-dash__completeness-bar"
+                        role="progressbar"
+                        aria-valuenow={osContext.evidenceCompleteness.completenessPercent}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
                       >
-                        {node.name}
-                        {node.latencyMs ? ` · ${node.latencyMs}ms` : ""}
-                      </span>
-                    ))}
-                    {osContext.dependencies.edges.map((edge) => (
-                      <span key={edge.id} className="evx-dash__dep-arrow">
-                        {edge.source} → {edge.destination}
-                      </span>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
-              {osContext.evidence.length > 0 ? (
-                <section className="evx-dash__context-section">
-                  <p className="evx-dash__timeline-label">EVIDENCE STORE · {osContext.evidence.length} ROWS</p>
-                  <div className="evx-dash__table">
-                    {osContext.evidence.slice(0, 8).map((item) => {
-                      const ref = evidenceCitationRefById.get(item.id);
-                      const rowContent = (
-                        <>
-                          <span className="evx-dash__chip">
-                            {item.type}
-                            {ref ? ` · ${ref}` : ""}
-                          </span>
-                          <span className="evx-dash__event-text">{item.description}</span>
-                          <span className="evx-dash__event-at">{formatEventTime(item.occurredAt)}</span>
-                        </>
-                      );
-
-                      if (item.timelineEntryId) {
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            className="evx-dash__row evx-dash__row--citation"
-                            style={{ gridTemplateColumns: "72px 1fr 64px" }}
-                            onClick={() => scrollToTimelineEntry(item.timelineEntryId!)}
-                            title={`Jump to timeline ${ref ?? ""}`.trim()}
+                        <span
+                          className="evx-dash__completeness-bar-fill"
+                          style={{ width: `${osContext.evidenceCompleteness.completenessPercent}%` }}
+                        />
+                      </div>
+                      <div className="evx-dash__completeness-sources">
+                        {osContext.evidenceCompleteness.sources.map((source) => (
+                          <span
+                            key={source.id}
+                            className={`evx-dash__chip evx-dash__chip--source st-${source.status}`}
+                            title={source.detail}
                           >
-                            {rowContent}
-                          </button>
-                        );
-                      }
+                            {source.label}
+                            {source.status === "collected"
+                              ? " ✓"
+                              : source.status === "missing"
+                                ? " · missing"
+                                : source.status === "partial"
+                                  ? " · optional"
+                                  : " · n/a"}
+                          </span>
+                        ))}
+                      </div>
+                      {!osContext.evidenceCompleteness.canConclude &&
+                      (osContext.evidenceCompleteness.missingForConclusion.length > 0 ||
+                        osContext.evidenceCompleteness.recommendedNextSteps.length > 0) ? (
+                        <details className="evx-dash__case-inline-details">
+                          <summary>What&apos;s missing</summary>
+                          {osContext.evidenceCompleteness.missingForConclusion.length > 0 ? (
+                            <div className="evx-dash__completeness-block">
+                              <p className="evx-dash__completeness-label">Additional evidence required</p>
+                              <ul className="evx-dash__completeness-list">
+                                {osContext.evidenceCompleteness.missingForConclusion.map((item) => (
+                                  <li key={item}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {osContext.evidenceCompleteness.recommendedNextSteps.length > 0 ? (
+                            <div className="evx-dash__completeness-block">
+                              <p className="evx-dash__completeness-label">Recommended next steps</p>
+                              <ul className="evx-dash__completeness-list">
+                                {osContext.evidenceCompleteness.recommendedNextSteps.map((step) => (
+                                  <li key={step}>{step}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </details>
+                      ) : null}
+                    </section>
+                  ) : null}
 
-                      return (
-                        <div key={item.id} className="evx-dash__row" style={{ gridTemplateColumns: "72px 1fr 64px" }}>
-                          {rowContent}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              ) : null}
-            </>
+                  {osContext.structuredEvidence ? (
+                    <StructuredEvidencePanel
+                      sections={osContext.structuredEvidence.sections}
+                      onCitationClick={scrollToTimelineEntry}
+                    />
+                  ) : null}
+                </div>
+              </section>
+
+              <section id="case-analysis" className="evx-dash__case-section">
+                <p className="evx-dash__case-section-label">Analysis</p>
+                {pinpointQuery.data?.primary ? (
+                  <section className="evx-dash__context-card evx-dash__pinpoint-card">
+                    <p className="evx-dash__context-card-title">Likely culprit · Pinpoint</p>
+                    <p className="evx-dash__pinpoint-file">
+                      {pinpointQuery.data.primary.file}
+                      {pinpointQuery.data.primary.line > 0 ? `:${pinpointQuery.data.primary.line}` : ""}
+                    </p>
+                    <p className="evx-dash__stat-note">{pinpointQuery.data.primary.evidence}</p>
+                    <div className="evx-dash__toolbar" style={{ marginTop: "0.65rem" }}>
+                      <span className={`evx-dash__chip evx-dash__chip--${pinpointQuery.data.primary.confidence}`}>
+                        {pinpointQuery.data.primary.confidence} confidence
+                      </span>
+                      <span className="evx-dash__chip">{pinpointQuery.data.primary.source.replace("_", " ")}</span>
+                      {pinpointQuery.data.primary.githubUrl ? (
+                        <a
+                          href={pinpointQuery.data.primary.githubUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="evx-dash__btn-ghost"
+                        >
+                          GitHub →
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="evx-dash__btn-primary"
+                        disabled={suggestFixMutation.isPending}
+                        onClick={async () => {
+                          if (!activeId) return;
+                          const result = await suggestFixMutation.mutateAsync({ id: activeId });
+                          if (result) setFixPreview(result.patch);
+                        }}
+                      >
+                        {suggestFixMutation.isPending ? "Analyzing…" : "Suggest fix"}
+                      </button>
+                    </div>
+                    {pinpointQuery.data.deployCorrelation ? (
+                      <p className="evx-dash__stat-note" style={{ marginTop: "0.45rem" }}>
+                        Deploy:{" "}
+                        <a href={pinpointQuery.data.deployCorrelation.url} target="_blank" rel="noreferrer">
+                          {pinpointQuery.data.deployCorrelation.repo}@{pinpointQuery.data.deployCorrelation.sha.slice(0, 7)}
+                        </a>
+                        {pinpointQuery.data.deployCorrelation.changedFiles.length
+                          ? ` · ${pinpointQuery.data.deployCorrelation.changedFiles.slice(0, 4).join(", ")}`
+                          : null}
+                      </p>
+                    ) : null}
+                    {fixPreview ? (
+                      <>
+                        <pre className="evx-dash__fix-preview">{fixPreview}</pre>
+                        <button
+                          type="button"
+                          className="evx-dash__btn-ghost"
+                          style={{ marginTop: "0.5rem" }}
+                          onClick={() => void navigator.clipboard.writeText(fixPreview)}
+                        >
+                          Copy patch
+                        </button>
+                      </>
+                    ) : null}
+                  </section>
+                ) : pinpointQuery.isLoading ? (
+                  <p className="evx-dash__stat-note">Scanning logs for file:line pinpoint…</p>
+                ) : (
+                  <p className="evx-dash__stat-note">Pinpoint analysis will appear when the case is ready.</p>
+                )}
+              </section>
+
+              <section id="case-timeline" className="evx-dash__case-section" ref={timelineRef}>
+                <p className="evx-dash__case-section-label">Timeline</p>
+                <div className="evx-dash__timeline">
+                  {timeline.length === 0 ? (
+                    <p className="evx-dash__stat-note">Timeline entries will appear as evidence is collected.</p>
+                  ) : (
+                    timeline.map((ev) => (
+                      <div key={ev.id} className="evx-dash__event" data-timeline-entry-id={ev.id}>
+                        <span className="evx-dash__event-at">{formatEventTime(ev.occurredAt)}</span>
+                        {timelineCitationRefById.get(ev.id) ? (
+                          <span className="evx-dash__citation-badge">{timelineCitationRefById.get(ev.id)}</span>
+                        ) : null}
+                        <span className={`evx-dash__event-kind k-${ev.kind.toLowerCase()}`}>{ev.kind}</span>
+                        <span className="evx-dash__event-text">
+                          <strong>{ev.title}</strong> — {ev.detail}
+                          {ev.source ? <span style={{ opacity: 0.55 }}> · {ev.source}</span> : null}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              <details className="evx-dash__case-more">
+                <summary>Notes, dependencies &amp; raw evidence</summary>
+                <div className="evx-dash__case-more-body">
+                  <section className="evx-dash__context-card">
+                    <p className="evx-dash__context-card-title">Engineer notes</p>
+                    {notesQuery.data?.length ? (
+                      <div className="evx-dash__table" style={{ marginBottom: "0.75rem" }}>
+                        {notesQuery.data.map((note) => (
+                          <div key={note.id} className="evx-dash__row" style={{ gridTemplateColumns: "1fr 72px" }}>
+                            <span className="evx-dash__event-text">{note.body}</span>
+                            <span className="evx-dash__event-at">{formatRelativeTime(note.createdAt)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="evx-dash__stat-note" style={{ marginBottom: "0.75rem" }}>
+                        No notes yet. Add context for your team.
+                      </p>
+                    )}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!activeId || !noteDraft.trim()) return;
+                        createNoteMutation.mutate({ investigationId: activeId, body: noteDraft.trim() });
+                      }}
+                      className="evx-dash__toolbar"
+                    >
+                      <input
+                        className="evx-dash__input"
+                        style={{ flex: 1 }}
+                        placeholder="Looks related to Redis pool…"
+                        value={noteDraft}
+                        onChange={(e) => setNoteDraft(e.target.value)}
+                      />
+                      <button type="submit" className="evx-dash__btn-primary" disabled={createNoteMutation.isPending}>
+                        Add note
+                      </button>
+                    </form>
+                  </section>
+
+                  {osContext.dependencies.nodes.length > 0 ? (
+                    <section className="evx-dash__context-section">
+                      <p className="evx-dash__timeline-label">Dependency graph</p>
+                      <div className="evx-dash__dep-flow">
+                        {osContext.dependencies.nodes.map((node) => (
+                          <span
+                            key={node.id}
+                            className={`evx-dash__dep-node ${node.healthy ? "is-healthy" : "is-unhealthy"}`}
+                            title={node.latencyMs ? `${node.latencyMs}ms` : undefined}
+                          >
+                            {node.name}
+                            {node.latencyMs ? ` · ${node.latencyMs}ms` : ""}
+                          </span>
+                        ))}
+                        {osContext.dependencies.edges.map((edge) => (
+                          <span key={edge.id} className="evx-dash__dep-arrow">
+                            {edge.source} → {edge.destination}
+                          </span>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {osContext.evidence.length > 0 ? (
+                    <section className="evx-dash__context-section">
+                      <p className="evx-dash__timeline-label">Evidence store · {osContext.evidence.length} rows</p>
+                      <div className="evx-dash__table">
+                        {osContext.evidence.slice(0, 8).map((item) => {
+                          const ref = evidenceCitationRefById.get(item.id);
+                          const rowContent = (
+                            <>
+                              <span className="evx-dash__chip">
+                                {item.type}
+                                {ref ? ` · ${ref}` : ""}
+                              </span>
+                              <span className="evx-dash__event-text">{item.description}</span>
+                              <span className="evx-dash__event-at">{formatEventTime(item.occurredAt)}</span>
+                            </>
+                          );
+
+                          if (item.timelineEntryId) {
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className="evx-dash__row evx-dash__row--citation"
+                                style={{ gridTemplateColumns: "72px 1fr 64px" }}
+                                onClick={() => scrollToTimelineEntry(item.timelineEntryId!)}
+                                title={`Jump to timeline ${ref ?? ""}`.trim()}
+                              >
+                                {rowContent}
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <div key={item.id} className="evx-dash__row" style={{ gridTemplateColumns: "72px 1fr 64px" }}>
+                              {rowContent}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ) : null}
+                </div>
+              </details>
+            </div>
           ) : (
             <p className="evx-dash__stat-note">Select a case to view details.</p>
           )}
         </div>
       </section>
-    </>
+    </div>
   );
 }

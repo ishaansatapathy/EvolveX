@@ -13,10 +13,11 @@ import "~/app/(app)/app-shell.css";
 type AppPageHeaderProps = {
   kicker: string;
   title: string;
+  subtitle?: string;
   children?: ReactNode;
 };
 
-export function AppPageHeader({ kicker, title, children }: AppPageHeaderProps) {
+export function AppPageHeader({ kicker, title, subtitle, children }: AppPageHeaderProps) {
   const { data: user } = useEvolvexUser();
   const initials = user
     ? (user.displayName ?? user.fullName)
@@ -31,6 +32,7 @@ export function AppPageHeader({ kicker, title, children }: AppPageHeaderProps) {
       <div>
         <p className="evx-dash__kicker">{kicker}</p>
         <h1 className="evx-dash__title">{title}</h1>
+        {subtitle ? <p className="evx-dash__subtitle">{subtitle}</p> : null}
       </div>
       <div className="evx-dash__topbar-right">
         {children}
