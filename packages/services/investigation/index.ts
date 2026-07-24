@@ -40,6 +40,8 @@ import { buildEvidenceCitationCatalog } from "./evidence-citations";
 import { buildIncidentNarrative, formatIncidentNarrativeForPrompt } from "./incident-narrative";
 import { buildStructuredEvidence, formatStructuredEvidenceForPrompt } from "./structured-evidence";
 import { computeInvestigationPinpoint, loadPinpointFileSnippet } from "./pinpoint";
+import { buildRootCauseHypotheses } from "./root-cause-hypotheses";
+import { findSimilarInvestigations, listInvestigations } from "./search";
 import { buildPostmortemFilename, buildPostmortemMarkdown } from "./postmortem-export";
 import { suggestInvestigationFix } from "./fix-suggestion";
 import { parseEbpfEvent, type EbpfEventPayload } from "../ebpf/webhook-parser";
@@ -119,14 +121,18 @@ function alertFromStoredPayload(row: SelectInvestigation): SignozAlert | undefin
 }
 
 class InvestigationService {
-  async list(userId: string, limit = 50): Promise<InvestigationListItem[]> {
-    const rows = await db
-      .select()
-      .from(investigationsTable)
-      .where(or(eq(investigationsTable.userId, userId), isNull(investigationsTable.userId)))
-      .orderBy(desc(investigationsTable.createdAt))
-      .limit(limit);
-    return rows.map(toListItem);
+  async list(
+    userId: string,
+    limit = 50,
+    filters?: import("./search").InvestigationListFilters,
+  ): Promise<InvestigationListItem[]> {
+    return listInvestigations(userId, limit, filters);
+  }
+
+  async findSimilarCases(investigationId: string, userId: string, limit = 5) {
+    const detail = await this.getById(investigationId, userId);
+    if (!detail) return null;
+    return findSimilarInvestigations(userId, investigationId, limit);
   }
 
   async getById(id: string, userId: string): Promise<InvestigationDetail | null> {
@@ -363,6 +369,13 @@ class InvestigationService {
       timelineCount: mappedTimeline.length,
     });
 
+    const rootCauseHypotheses = buildRootCauseHypotheses({
+      timeline: mappedTimeline,
+      changeEvents: mappedChangeEvents,
+      citations: evidenceCitations,
+      primaryService: row.primaryService,
+    });
+
     return {
       investigation: {
         id: row.id,
@@ -396,6 +409,7 @@ class InvestigationService {
       structuredEvidence,
       evidenceCitations,
       incidentNarrative,
+      rootCauseHypotheses,
     };
   }
 

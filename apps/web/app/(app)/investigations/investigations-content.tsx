@@ -11,6 +11,8 @@ import { EvidenceCitationMarkdown } from "~/components/evolvex/evidence-citation
 import { IncidentNarrativePanel } from "~/components/evolvex/incident-narrative-panel";
 import { InvestigationCaseNav } from "~/components/evolvex/investigation-case-nav";
 import { InvestigationSplitPane } from "~/components/evolvex/investigation-split-pane";
+import { RootCauseHypothesesPanel } from "~/components/evolvex/root-cause-hypotheses-panel";
+import { SimilarCasesPanel } from "~/components/evolvex/similar-cases-panel";
 import { StructuredEvidencePanel } from "~/components/evolvex/structured-evidence-panel";
 import { trpc } from "~/trpc/client";
 
@@ -71,11 +73,34 @@ export default function InvestigationsPageContent() {
   const searchParams = useSearchParams();
   const urlInvestigationId = searchParams.get("investigation");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [caseSearchQuery, setCaseSearchQuery] = useState("");
+  const [severityFilter, setSeverityFilter] = useState("");
+  const [pipelineStatusFilter, setPipelineStatusFilter] = useState("");
+  const [caseStatusFilter, setCaseStatusFilter] = useState("");
+  const [timelineKindFilter, setTimelineKindFilter] = useState<string>("ALL");
+  const [timelineSearch, setTimelineSearch] = useState("");
   const detailScrollRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
   const listQuery = trpc.investigations.list.useQuery(
-    { limit: 50 },
+    {
+      limit: 50,
+      query: caseSearchQuery.trim() || undefined,
+      severity: severityFilter || undefined,
+      pipelineStatus:
+        pipelineStatusFilter === "building" ||
+        pipelineStatusFilter === "ready" ||
+        pipelineStatusFilter === "failed"
+          ? pipelineStatusFilter
+          : undefined,
+      caseStatus:
+        caseStatusFilter === "open" ||
+        caseStatusFilter === "investigating" ||
+        caseStatusFilter === "monitoring" ||
+        caseStatusFilter === "resolved"
+          ? caseStatusFilter
+          : undefined,
+    },
     { refetchInterval: (query) => (query.state.data?.some((item) => item.status === "building") ? 3000 : false) },
   );
 
@@ -146,6 +171,11 @@ export default function InvestigationsPageContent() {
     { enabled: Boolean(activeId) && osContext?.investigation.status === "ready" },
   );
 
+  const similarQuery = trpc.investigations.similar.useQuery(
+    { id: activeId ?? "" },
+    { enabled: Boolean(activeId) && osContext?.investigation.status === "ready" },
+  );
+
   const timelineCitationRefById = useMemo(() => {
     const map = new Map<string, string>();
     for (const citation of osContext?.evidenceCitations.citations ?? []) {
@@ -165,6 +195,29 @@ export default function InvestigationsPageContent() {
     }
     return map;
   }, [osContext?.evidenceCitations.citations]);
+
+  const timelineCitationEntryIdByRef = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const citation of osContext?.evidenceCitations.citations ?? []) {
+      if (citation.ref.startsWith("T") && citation.timelineEntryId) {
+        map.set(citation.ref, citation.timelineEntryId);
+      }
+    }
+    return map;
+  }, [osContext?.evidenceCitations.citations]);
+
+  const filteredTimeline = useMemo(() => {
+    const needle = timelineSearch.trim().toLowerCase();
+    return timeline.filter((entry) => {
+      if (timelineKindFilter !== "ALL" && entry.kind !== timelineKindFilter) return false;
+      if (!needle) return true;
+      return (
+        entry.title.toLowerCase().includes(needle) ||
+        entry.detail.toLowerCase().includes(needle) ||
+        (entry.source ?? "").toLowerCase().includes(needle)
+      );
+    });
+  }, [timeline, timelineKindFilter, timelineSearch]);
 
   const summaryText =
     osContext?.investigation.summary ??
@@ -321,7 +374,7 @@ export default function InvestigationsPageContent() {
       <AppPageHeader
         kicker="⊙ ACTIVE CASE FILES"
         title="Investigations"
-        subtitle={`${investigations.length} case${investigations.length === 1 ? "" : "s"} ┬╖ SigNoz alerts`}
+        subtitle={`${investigations.length} case${investigations.length === 1 ? "" : "s"} · SigNoz alerts`}
       />
 
       <InvestigationSplitPane
@@ -332,6 +385,60 @@ export default function InvestigationsPageContent() {
                 <p className="evx-dash__panel-label">INCIDENT QUEUE</p>
                 <span className="evx-dash__incidents-count">{investigations.length} active</span>
               </div>
+              <label className="evx-dash__queue-search">
+                <span className="evx-dash__sr-only">Search investigations</span>
+                <input
+                  type="search"
+                  value={caseSearchQuery}
+                  onChange={(event) => setCaseSearchQuery(event.target.value)}
+                  placeholder="Search cases, services, alerts…"
+                  className="evx-dash__queue-search-input"
+                />
+              </label>
+              <div className="evx-dash__queue-filters">
+                <select
+                  value={severityFilter}
+                  onChange={(event) => setSeverityFilter(event.target.value)}
+                  className="evx-dash__queue-filter-select"
+                  aria-label="Filter by severity"
+                >
+                  <option value="">All severities</option>
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+                <select
+                  value={pipelineStatusFilter}
+                  onChange={(event) => setPipelineStatusFilter(event.target.value)}
+                  className="evx-dash__queue-filter-select"
+                  aria-label="Filter by pipeline status"
+                >
+                  <option value="">All pipeline</option>
+                  <option value="building">Building</option>
+                  <option value="ready">Ready</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <select
+                  value={caseStatusFilter}
+                  onChange={(event) => setCaseStatusFilter(event.target.value)}
+                  className="evx-dash__queue-filter-select"
+                  aria-label="Filter by case status"
+                >
+                  <option value="">All case status</option>
+                  <option value="open">Open</option>
+                  <option value="investigating">Investigating</option>
+                  <option value="monitoring">Monitoring</option>
+                  <option value="resolved">Resolved</option>
+                </select>
+              </div>
+              {investigations.length === 0 ? (
+                <p className="evx-dash__stat-note evx-dash__queue-empty">
+                  {caseSearchQuery.trim() || severityFilter || pipelineStatusFilter || caseStatusFilter
+                    ? "No cases match your filters."
+                    : "No cases yet."}
+                </p>
+              ) : null}
               {investigations.map((inc) => {
                 const isActive = activeId === inc.id;
                 const evidencePercent =
@@ -384,8 +491,8 @@ export default function InvestigationsPageContent() {
                 <div className="evx-dash__case-hero-top">
                   <div className="evx-dash__case-hero-main">
                     <p className="evx-dash__case-hero-kicker">
-                      {activeListItem.shortId} ┬╖ {primaryService}
-                      {osContext.investigation.incidentId ? ` ┬╖ ${osContext.investigation.incidentId}` : ""}
+                      {activeListItem.shortId} · {primaryService}
+                      {osContext.investigation.incidentId ? ` · ${osContext.investigation.incidentId}` : ""}
                     </p>
                     <h2 className="evx-dash__case-hero-title">{activeListItem.title}</h2>
                   </div>
@@ -487,7 +594,7 @@ export default function InvestigationsPageContent() {
                       </div>
                       <div className="evx-dash__cause-footer">
                         <p className="evx-dash__cause-meta">
-                          Generated {formatRelativeTime(osContext.llmSummary.generatedAt)} ┬╖ click [T1]/[E1] to jump
+                          Generated {formatRelativeTime(osContext.llmSummary.generatedAt)} · click [T1]/[E1] to jump
                         </p>
                         {osContext.investigation.status === "ready" ? (
                           <button
@@ -526,7 +633,7 @@ export default function InvestigationsPageContent() {
                 <p className="evx-dash__case-section-label">Evidence</p>
                 {osContext.ebpfEnrichment.recommended && !osContext.ebpfEnrichment.collected ? (
                   <section className="evx-dash__context-card evx-dash__ebpf-card">
-                    <p className="evx-dash__context-card-title">KERNEL SIGNALS ┬╖ EBPF</p>
+                    <p className="evx-dash__context-card-title">KERNEL SIGNALS · EBPF</p>
                     <p className="evx-dash__stat-note">
                       Tail latency case — kernel/network metrics can explain p99 degradation beyond trace averages.
                     </p>
@@ -592,10 +699,10 @@ export default function InvestigationsPageContent() {
                             {source.status === "collected"
                               ? " ✓"
                               : source.status === "missing"
-                                ? " ┬╖ missing"
+                                ? " · missing"
                                 : source.status === "partial"
-                                  ? " ┬╖ optional"
-                                  : " ┬╖ n/a"}
+                                  ? " · optional"
+                                  : " · n/a"}
                           </span>
                         ))}
                       </div>
@@ -642,7 +749,7 @@ export default function InvestigationsPageContent() {
                 <p className="evx-dash__case-section-label">Analysis</p>
                 {pinpointQuery.data?.primary ? (
                   <section className="evx-dash__context-card evx-dash__pinpoint-card">
-                    <p className="evx-dash__context-card-title">Likely culprit ┬╖ Pinpoint</p>
+                    <p className="evx-dash__context-card-title">Likely culprit · Pinpoint</p>
                     <p className="evx-dash__pinpoint-file">
                       {pinpointQuery.data.primary.file}
                       {pinpointQuery.data.primary.line > 0 ? `:${pinpointQuery.data.primary.line}` : ""}
@@ -683,7 +790,7 @@ export default function InvestigationsPageContent() {
                           {pinpointQuery.data.deployCorrelation.repo}@{pinpointQuery.data.deployCorrelation.sha.slice(0, 7)}
                         </a>
                         {pinpointQuery.data.deployCorrelation.changedFiles.length
-                          ? ` ┬╖ ${pinpointQuery.data.deployCorrelation.changedFiles.slice(0, 4).join(", ")}`
+                          ? ` · ${pinpointQuery.data.deployCorrelation.changedFiles.slice(0, 4).join(", ")}`
                           : null}
                       </p>
                     ) : null}
@@ -706,6 +813,16 @@ export default function InvestigationsPageContent() {
                 ) : (
                   <p className="evx-dash__stat-note">Pinpoint analysis will appear when the case is ready.</p>
                 )}
+
+                {osContext.rootCauseHypotheses?.length ? (
+                  <RootCauseHypothesesPanel
+                    hypotheses={osContext.rootCauseHypotheses}
+                    onCitationClick={scrollToTimelineEntry}
+                    citationEntryIdByRef={timelineCitationEntryIdByRef}
+                  />
+                ) : null}
+
+                <SimilarCasesPanel cases={similarQuery.data ?? []} activeId={activeId ?? undefined} />
               </section>
 
               <section id="case-timeline" className="evx-dash__case-section" ref={timelineRef}>
@@ -714,9 +831,42 @@ export default function InvestigationsPageContent() {
                   <p className="evx-dash__stat-note">Timeline entries will appear as evidence is collected.</p>
                 ) : (
                   <section className="evx-dash__context-card evx-dash__narrative-card evx-dash__timeline-card">
-                    <p className="evx-dash__context-card-title">EVIDENCE TIMELINE ┬╖ POSTGRES</p>
+                    <p className="evx-dash__context-card-title">EVIDENCE TIMELINE · POSTGRES</p>
+                    <div className="evx-dash__timeline-filters">
+                      <label className="evx-dash__timeline-filter">
+                        <span className="evx-dash__sr-only">Filter by kind</span>
+                        <select
+                          value={timelineKindFilter}
+                          onChange={(event) => setTimelineKindFilter(event.target.value)}
+                          className="evx-dash__timeline-filter-select"
+                        >
+                          <option value="ALL">All kinds</option>
+                          {[...new Set(timeline.map((entry) => entry.kind))].map((kind) => (
+                            <option key={kind} value={kind}>
+                              {kind}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="evx-dash__timeline-filter evx-dash__timeline-filter--search">
+                        <span className="evx-dash__sr-only">Search timeline</span>
+                        <input
+                          type="search"
+                          value={timelineSearch}
+                          onChange={(event) => setTimelineSearch(event.target.value)}
+                          placeholder="Filter timeline…"
+                          className="evx-dash__timeline-filter-input"
+                        />
+                      </label>
+                      <span className="evx-dash__timeline-filter-count">
+                        {filteredTimeline.length}/{timeline.length}
+                      </span>
+                    </div>
+                    {filteredTimeline.length === 0 ? (
+                      <p className="evx-dash__stat-note">No timeline entries match the current filters.</p>
+                    ) : (
                     <ol className="evx-dash__narrative-beats">
-                      {timeline.map((ev) => (
+                      {filteredTimeline.map((ev) => (
                         <li key={ev.id} className="evx-dash__narrative-beat" data-timeline-entry-id={ev.id}>
                           <div className="evx-dash__narrative-beat-head">
                             <span className="evx-dash__event-at">{formatEventTime(ev.occurredAt)}</span>
@@ -727,11 +877,12 @@ export default function InvestigationsPageContent() {
                           </div>
                           <p className="evx-dash__narrative-sentence">
                             <strong>{ev.title}</strong> — {ev.detail}
-                            {ev.source ? <span className="evx-dash__event-source"> ┬╖ {ev.source}</span> : null}
+                            {ev.source ? <span className="evx-dash__event-source"> · {ev.source}</span> : null}
                           </p>
                         </li>
                       ))}
                     </ol>
+                    )}
                   </section>
                 )}
               </section>
@@ -787,7 +938,7 @@ export default function InvestigationsPageContent() {
                             title={node.latencyMs ? `${node.latencyMs}ms` : undefined}
                           >
                             {node.name}
-                            {node.latencyMs ? ` ┬╖ ${node.latencyMs}ms` : ""}
+                            {node.latencyMs ? ` · ${node.latencyMs}ms` : ""}
                           </span>
                         ))}
                         {osContext.dependencies.edges.map((edge) => (
@@ -801,7 +952,7 @@ export default function InvestigationsPageContent() {
 
                   {osContext.evidence.length > 0 ? (
                     <section className="evx-dash__context-section">
-                      <p className="evx-dash__timeline-label">Evidence store ┬╖ {osContext.evidence.length} rows</p>
+                      <p className="evx-dash__timeline-label">Evidence store · {osContext.evidence.length} rows</p>
                       <div className="evx-dash__table">
                         {osContext.evidence.slice(0, 8).map((item) => {
                           const ref = evidenceCitationRefById.get(item.id);
@@ -809,7 +960,7 @@ export default function InvestigationsPageContent() {
                             <>
                               <span className="evx-dash__chip">
                                 {item.type}
-                                {ref ? ` ┬╖ ${ref}` : ""}
+                                {ref ? ` · ${ref}` : ""}
                               </span>
                               <span className="evx-dash__event-text">{item.description}</span>
                               <span className="evx-dash__event-at">{formatEventTime(item.occurredAt)}</span>

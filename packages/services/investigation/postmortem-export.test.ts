@@ -124,6 +124,16 @@ const baseContext: InvestigationOsContext = {
       },
     ],
   },
+  rootCauseHypotheses: [
+    {
+      id: "hyp-1",
+      title: "Deploy regression in payments-svc",
+      confidence: "high",
+      rationale: "Commit landed minutes before trace degradation.",
+      citationRefs: ["T1"],
+      kind: "primary",
+    },
+  ],
 };
 
 describe("buildPostmortemMarkdown", () => {
@@ -147,6 +157,7 @@ describe("buildPostmortemMarkdown", () => {
     expect(markdown).toContain("72% evidence collected");
     expect(markdown).toContain("**Case status:** open");
     expect(markdown).toContain("**AI confidence:** medium");
+    expect(markdown).toContain("Deploy regression in payments-svc");
   });
 
   it("builds a safe filename from short id", () => {

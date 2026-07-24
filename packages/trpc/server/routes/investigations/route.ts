@@ -96,11 +96,49 @@ export const investigationsRouter = router({
 
   list: protectedProcedure
     .meta({ openapi: { method: "GET", path: "/investigations", tags: TAGS } })
-    .input(z.object({ limit: z.number().int().min(1).max(100).optional() }).optional())
+    .input(
+      z
+        .object({
+          limit: z.number().int().min(1).max(100).optional(),
+          query: z.string().max(200).optional(),
+          severity: z.string().max(32).optional(),
+          pipelineStatus: z.enum(["building", "ready", "failed"]).optional(),
+          caseStatus: z.enum(["open", "investigating", "monitoring", "resolved"]).optional(),
+        })
+        .optional(),
+    )
     .output(z.array(investigationListItemSchema))
     .query(async ({ ctx, input }) => {
       try {
-        return await investigationService.list(ctx.user.id, input?.limit ?? 50);
+        return await investigationService.list(ctx.user.id, input?.limit ?? 50, {
+          query: input?.query,
+          severity: input?.severity,
+          pipelineStatus: input?.pipelineStatus,
+          caseStatus: input?.caseStatus,
+        });
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  similar: protectedProcedure
+    .meta({ openapi: { method: "GET", path: "/investigations/{id}/similar", tags: TAGS } })
+    .input(z.object({ id: z.string().uuid(), limit: z.number().int().min(1).max(20).optional() }))
+    .output(
+      z.array(
+        investigationListItemSchema.extend({
+          similarityScore: z.number(),
+          matchReasons: z.array(z.string()),
+        }),
+      ),
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        const rows = await investigationService.findSimilarCases(input.id, ctx.user.id, input.limit ?? 5);
+        if (!rows) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+        }
+        return rows;
       } catch (error) {
         mapServiceError(error);
       }

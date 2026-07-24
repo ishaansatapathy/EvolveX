@@ -188,6 +188,16 @@ export const investigationOsContextSchema = z.object({
       }),
     ),
   }),
+  rootCauseHypotheses: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      confidence: z.enum(["high", "medium", "low"]),
+      rationale: z.string(),
+      citationRefs: z.array(z.string()),
+      kind: z.enum(["primary", "alternative"]),
+    }),
+  ),
 });
 
 export const investigationNoteSchema = z.object({

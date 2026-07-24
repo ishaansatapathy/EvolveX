@@ -166,6 +166,18 @@ export function buildPostmortemMarkdown(input: PostmortemExportInput): string {
     empty: input.context.incidentNarrative.empty,
   });
 
+  const hypothesesBlock =
+    context.rootCauseHypotheses.length === 0
+      ? "_No ranked root-cause hypotheses yet._"
+      : context.rootCauseHypotheses
+          .map(
+            (hypothesis, index) =>
+              `${index + 1}. **${hypothesis.title}** (${hypothesis.confidence}, ${hypothesis.kind}) — ${hypothesis.rationale}${
+                hypothesis.citationRefs.length ? ` · refs: ${hypothesis.citationRefs.join(", ")}` : ""
+              }`,
+          )
+          .join("\n");
+
   return [
     `# Incident Postmortem · ${input.shortId}`,
     "",
@@ -178,6 +190,7 @@ export function buildPostmortemMarkdown(input: PostmortemExportInput): string {
     section("Structured supporting evidence", structuredBlock),
     section("Evidence completeness", completenessBlock),
     section("Change events", changeEventsBlock),
+    section("Root cause hypotheses", hypothesesBlock),
     section("Likely culprit · Pinpoint", pinpointBlock),
     section("Dependency graph", dependencyBlock),
     section("Engineer notes", notesBlock),
