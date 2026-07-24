@@ -17,6 +17,7 @@ type OrganizationIntegrationsPanelProps = {
   organizationId?: string;
   organizationName?: string;
   isOwner: boolean;
+  baseUrl?: string;
 };
 
 const PROVIDER_LABELS: Record<IntegrationSummary["provider"], string> = {
@@ -30,6 +31,7 @@ export function OrganizationIntegrationsPanel({
   organizationId,
   organizationName,
   isOwner,
+  baseUrl = "http://localhost:8000",
 }: OrganizationIntegrationsPanelProps) {
   const utils = trpc.useUtils();
   const integrationsQuery = trpc.organizations.integrations.list.useQuery(
@@ -89,6 +91,11 @@ export function OrganizationIntegrationsPanel({
   const [slackForm, setSlackForm] = useState({ webhookUrl: "" });
   const [pagerDutyForm, setPagerDutyForm] = useState({ routingKey: "" });
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [githubTesting, setGithubTesting] = useState(false);
+
+  const githubWebhookUrl = `${baseUrl.replace(/\/+$/, "")}/webhooks/github`;
 
   const byProvider = useMemo(() => {
     const map = new Map<IntegrationSummary["provider"], IntegrationSummary>();
@@ -111,9 +118,26 @@ export function OrganizationIntegrationsPanel({
   }
 
   async function handleTest(provider: "signoz" | "github") {
-    const result =
-      provider === "signoz" ? await signozTest.refetch() : await githubTest.refetch();
-    setMessage(result.data?.message ?? "Connection test failed");
+    if (provider === "github") setGithubTesting(true);
+    try {
+      const result =
+        provider === "signoz" ? await signozTest.refetch() : await githubTest.refetch();
+      setMessageTone(result.data?.ok ? "success" : "error");
+      setMessage(result.data?.message ?? "Connection test failed");
+    } finally {
+      if (provider === "github") setGithubTesting(false);
+    }
+  }
+
+  async function handleCopyGithubWebhook() {
+    await navigator.clipboard.writeText(githubWebhookUrl);
+    setCopiedWebhook(true);
+    setTimeout(() => setCopiedWebhook(false), 1500);
+  }
+
+  function notify(text: string, tone: "info" | "success" | "error" = "success") {
+    setMessageTone(tone);
+    setMessage(text);
   }
 
   function renderSourceBadge(item?: IntegrationSummary) {
@@ -136,7 +160,10 @@ export function OrganizationIntegrationsPanel({
       </div>
 
       {message ? (
-        <p className="evx-dash__stat-note" style={{ marginBottom: "0.75rem" }}>
+        <p
+          className={`evx-dash__integration-message evx-dash__integration-message--${messageTone}`}
+          style={{ marginBottom: "0.75rem" }}
+        >
           {message}
         </p>
       ) : null}
@@ -190,6 +217,7 @@ export function OrganizationIntegrationsPanel({
                   ingestionKey: signozForm.ingestionKey || undefined,
                 });
                 setMessage("SigNoz credentials saved to workspace vault.");
+                setMessageTone("success");
               }}
             >
               Save SigNoz
@@ -212,38 +240,102 @@ export function OrganizationIntegrationsPanel({
           </div>
         </article>
 
-        <article className="evx-dash__settings-card">
+        <article className="evx-dash__settings-card evx-dash__github-integration-card">
           <div className="evx-dash__org-integration-head">
             <p className="evx-dash__settings-label">{PROVIDER_LABELS.github}</p>
             {renderSourceBadge(byProvider.get("github"))}
           </div>
+          <p className="evx-dash__stat-note" style={{ marginBottom: "0.65rem" }}>
+            No OAuth — paste a personal access token (PAT). Enables pinpoint file fetch, deploy diff correlation, and
+            suggest-fix context.
+          </p>
+          <details className="evx-dash__github-setup-guide">
+            <summary>How to create a GitHub PAT</summary>
+            <ol className="evx-dash__github-setup-steps">
+              <li>
+                Open{" "}
+                <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">
+                  GitHub → Settings → Developer settings → Personal access tokens
+                </a>
+                .
+              </li>
+              <li>
+                <strong>Classic token:</strong> enable <code>repo</code> (private repos) and <code>read:user</code>.
+              </li>
+              <li>
+                <strong>Fine-grained token:</strong> grant read access to repositories you deploy from.
+              </li>
+              <li>Paste the token below and click <strong>Save GitHub</strong>, then <strong>Test token</strong>.</li>
+              <li>
+                Optional: register push webhook at <code>{githubWebhookUrl}</code> with content type{" "}
+                <code>application/json</code> and the secret below.
+              </li>
+            </ol>
+          </details>
           <label className="evx-dash__org-field">
-            <span>PAT token {byProvider.get("github")?.maskedSecrets.token ? `(${byProvider.get("github")?.maskedSecrets.token})` : ""}</span>
+            <span>
+              PAT token{" "}
+              {byProvider.get("github")?.maskedSecrets.token
+                ? `(saved: ${byProvider.get("github")?.maskedSecrets.token})`
+                : ""}
+            </span>
             <input
               type="password"
-              placeholder="ghp_… — repo read scope"
+              placeholder="ghp_… or github_pat_…"
               value={githubForm.token}
               onChange={(event) => setGithubForm((prev) => ({ ...prev, token: event.target.value }))}
+              autoComplete="off"
             />
           </label>
+          <label className="evx-dash__org-field">
+            <span>
+              Webhook secret{" "}
+              {byProvider.get("github")?.maskedSecrets.webhookSecret
+                ? `(saved: ${byProvider.get("github")?.maskedSecrets.webhookSecret})`
+                : ""}
+            </span>
+            <input
+              type="password"
+              placeholder="Optional — for POST /webhooks/github verification"
+              value={githubForm.webhookSecret}
+              onChange={(event) => setGithubForm((prev) => ({ ...prev, webhookSecret: event.target.value }))}
+              autoComplete="off"
+            />
+          </label>
+          <p className="evx-dash__stat-note evx-dash__github-webhook-url">
+            Deploy webhook URL: <code>{githubWebhookUrl}</code>
+          </p>
           <div className="evx-dash__cause-actions">
             <button
               type="button"
               className="evx-dash__btn-primary"
               disabled={upsertGithub.isPending}
               onClick={async () => {
-                await upsertGithub.mutateAsync({
-                  organizationId,
-                  token: githubForm.token || undefined,
-                  webhookSecret: githubForm.webhookSecret || undefined,
-                });
-                setMessage("GitHub token saved to workspace vault.");
+                try {
+                  await upsertGithub.mutateAsync({
+                    organizationId,
+                    token: githubForm.token || undefined,
+                    webhookSecret: githubForm.webhookSecret || undefined,
+                  });
+                  setGithubForm((prev) => ({ ...prev, token: "" }));
+                  notify("GitHub credentials saved to workspace vault.");
+                } catch (error) {
+                  notify(error instanceof Error ? error.message : "Failed to save GitHub credentials", "error");
+                }
               }}
             >
               Save GitHub
             </button>
-            <button type="button" className="evx-dash__btn-ghost" onClick={() => handleTest("github")}>
-              Test
+            <button
+              type="button"
+              className="evx-dash__btn-ghost"
+              disabled={githubTesting}
+              onClick={() => handleTest("github")}
+            >
+              {githubTesting ? "Testing…" : "Test token"}
+            </button>
+            <button type="button" className="evx-dash__btn-ghost" onClick={() => void handleCopyGithubWebhook()}>
+              {copiedWebhook ? "Copied!" : "Copy webhook URL"}
             </button>
             {byProvider.get("github")?.source === "organization" ? (
               <button
@@ -251,7 +343,7 @@ export function OrganizationIntegrationsPanel({
                 className="evx-dash__btn-ghost"
                 onClick={async () => {
                   await removeIntegration.mutateAsync({ organizationId, provider: "github" });
-                  setMessage("GitHub workspace credentials removed.");
+                  notify("GitHub workspace credentials removed — .env fallback will apply.", "info");
                 }}
               >
                 Remove vault

@@ -1691,6 +1691,66 @@
   border-color: rgba(230, 255, 0, 0.55);
 }
 
+.evx-dash__integration-message {
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.evx-dash__integration-message--success {
+  background: rgba(120, 200, 140, 0.12);
+  border: 1px solid rgba(120, 200, 140, 0.35);
+  color: #b8f0c8;
+}
+
+.evx-dash__integration-message--error {
+  background: rgba(255, 120, 100, 0.12);
+  border: 1px solid rgba(255, 120, 100, 0.35);
+  color: #ffc4b8;
+}
+
+.evx-dash__integration-message--info {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(240, 240, 235, 0.14);
+  color: rgba(240, 240, 235, 0.78);
+}
+
+.evx-dash__github-integration-card {
+  grid-column: 1 / -1;
+}
+
+.evx-dash__github-setup-guide {
+  margin-bottom: 0.75rem;
+  font-size: 0.78rem;
+  color: rgba(240, 240, 235, 0.72);
+}
+
+.evx-dash__github-setup-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #7ab8ff;
+  margin-bottom: 0.35rem;
+}
+
+.evx-dash__github-setup-steps {
+  margin: 0.45rem 0 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.evx-dash__github-setup-steps code {
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.74rem;
+}
+
+.evx-dash__github-webhook-url code {
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
 .evx-dash__settings-value {
   margin: 0.45rem 0 0;
   font-size: 0.9rem;

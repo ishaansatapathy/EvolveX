@@ -416,6 +416,20 @@ export async function resolveGithubToken(organizationId?: string | null): Promis
   return process.env.GITHUB_TOKEN?.trim() ?? null;
 }
 
+export async function resolveGithubWebhookSecret(organizationId?: string | null): Promise<string | null> {
+  if (organizationId) {
+    const row = await loadIntegrationRow(organizationId, "github");
+    if (row) {
+      const secrets = decryptRowSecrets(row);
+      const webhookSecret =
+        typeof secrets.webhookSecret === "string" ? secrets.webhookSecret.trim() : "";
+      if (webhookSecret) return webhookSecret;
+    }
+  }
+
+  return process.env.GITHUB_WEBHOOK_SECRET?.trim() ?? null;
+}
+
 export async function resolveSlackWebhookUrl(organizationId?: string | null): Promise<string | null> {
   if (organizationId) {
     const row = await loadIntegrationRow(organizationId, "slack");
@@ -452,6 +466,32 @@ export async function isGithubConfiguredForOrganization(organizationId?: string 
   return Boolean(token);
 }
 
+export async function isGithubWebhookConfiguredForOrganization(organizationId?: string | null) {
+  const secret = await resolveGithubWebhookSecret(organizationId);
+  return Boolean(secret);
+}
+
+export type GithubIntegrationTestResult = {
+  ok: boolean;
+  message: string;
+  login?: string;
+  scopes?: string[];
+  hasRepoScope?: boolean;
+  rateLimitRemaining?: number;
+};
+
+function parseGithubScopes(headerValue: string | null): string[] {
+  if (!headerValue) return [];
+  return headerValue
+    .split(",")
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+}
+
+function hasGithubRepoScope(scopes: string[]) {
+  return scopes.some((scope) => scope === "repo" || scope.startsWith("repo:"));
+}
+
 export async function testSignozIntegration(organizationId?: string | null) {
   const config = await resolveSignozConfig(organizationId);
   if (!config) return { ok: false, message: "SigNoz is not configured for this workspace" };
@@ -473,9 +513,20 @@ export async function testSignozIntegration(organizationId?: string | null) {
   }
 }
 
-export async function testGithubIntegration(organizationId?: string | null) {
+export async function testGithubIntegration(
+  organizationId?: string | null,
+): Promise<GithubIntegrationTestResult> {
   const token = await resolveGithubToken(organizationId);
-  if (!token) return { ok: false, message: "GitHub token is not configured for this workspace" };
+  if (!token) {
+    return { ok: false, message: "GitHub token is not configured — paste a PAT below or set GITHUB_TOKEN in .env" };
+  }
+
+  if (!/^(ghp_|github_pat_|gho_|ghu_|ghs_|ghr_)/.test(token)) {
+    return {
+      ok: false,
+      message: "Token format looks invalid — use a GitHub personal access token (classic or fine-grained)",
+    };
+  }
 
   try {
     const response = await fetch("https://api.github.com/user", {
@@ -486,12 +537,41 @@ export async function testGithubIntegration(organizationId?: string | null) {
       },
     });
     if (!response.ok) {
-      return { ok: false, message: `GitHub API returned ${response.status}` };
+      const hint =
+        response.status === 401
+          ? " — token expired or revoked; create a new PAT"
+          : response.status === 403
+            ? " — check token scopes (repo required for private repos)"
+            : "";
+      return { ok: false, message: `GitHub API returned ${response.status}${hint}` };
     }
+
     const json = (await response.json()) as { login?: string };
+    const scopes = parseGithubScopes(response.headers.get("x-oauth-scopes"));
+    const repoScope = hasGithubRepoScope(scopes);
+    const rateLimitRemaining = Number.parseInt(response.headers.get("x-ratelimit-remaining") ?? "", 10);
+    const login = json.login ?? undefined;
+
+    const scopeLabel = scopes.length > 0 ? scopes.join(", ") : "fine-grained (repo access via token settings)";
+    let message = login
+      ? `Connected as @${login} · scopes: ${scopeLabel}`
+      : `GitHub API connected · scopes: ${scopeLabel}`;
+
+    if (Number.isFinite(rateLimitRemaining)) {
+      message += ` · rate limit: ${rateLimitRemaining} remaining`;
+    }
+
+    if (scopes.length > 0 && !repoScope) {
+      message += " · warning: no repo scope — private repo pinpoint/deploy diff may fail";
+    }
+
     return {
       ok: true,
-      message: json.login ? `GitHub connected as @${json.login}` : "GitHub API connected",
+      message,
+      login,
+      scopes: scopes.length > 0 ? scopes : undefined,
+      hasRepoScope: scopes.length > 0 ? repoScope : undefined,
+      rateLimitRemaining: Number.isFinite(rateLimitRemaining) ? rateLimitRemaining : undefined,
     };
   } catch (error) {
     return {

@@ -75,6 +75,7 @@ export function buildIntegrationHealth(input?: {
   databaseConnected?: boolean | null;
   orgSignozConfigured?: boolean;
   orgGithubConfigured?: boolean;
+  orgGithubWebhookConfigured?: boolean;
   orgSlackConfigured?: boolean;
   orgPagerDutyConfigured?: boolean;
   orgSource?: "organization" | "environment";
@@ -82,6 +83,7 @@ export function buildIntegrationHealth(input?: {
   const orgSource = input?.orgSource ?? "environment";
   const signozReady = input?.orgSignozConfigured ?? isSignozConfigured();
   const githubReady = input?.orgGithubConfigured ?? isGithubApiConfigured();
+  const githubWebhookReady = input?.orgGithubWebhookConfigured ?? isGithubWebhookConfigured();
   const slackReady = input?.orgSlackConfigured ?? isSlackConfigured();
   const pagerDutyReady = input?.orgPagerDutyConfigured ?? isPagerDutyConfigured();
   const sourceLabel = orgSource === "organization" ? "workspace vault" : ".env";
@@ -190,11 +192,11 @@ export function buildIntegrationHealth(input?: {
       label: "GitHub deploys",
       category: "change",
       configured: true,
-      authConfigured: isGithubWebhookConfigured(),
+      authConfigured: githubWebhookReady,
       connected: null,
-      detail: isGithubWebhookConfigured()
-        ? "Push webhook verified via X-Hub-Signature-256"
-        : "Set GITHUB_WEBHOOK_SECRET — URL alone is not enough",
+      detail: githubWebhookReady
+        ? `Push webhook verified via X-Hub-Signature-256 · ${sourceLabel}`
+        : "Add webhook secret in GitHub settings below (or set GITHUB_WEBHOOK_SECRET in .env)",
       webhookUrl: `${baseUrl}/webhooks/github`,
       actionLabel: "Copy GitHub webhook",
     }),

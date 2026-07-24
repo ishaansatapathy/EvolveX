@@ -119,6 +119,7 @@ export default function SettingsPage() {
         organizationId={workspace?.id}
         organizationName={workspace?.name}
         isOwner={isWorkspaceOwner}
+        baseUrl={health?.baseUrl}
       />
 
       {healthQuery.isLoading ? (
