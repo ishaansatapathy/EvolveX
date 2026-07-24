@@ -35,6 +35,7 @@ import {
 } from "./correlation";
 import { enrichEbpfFromSignozMetrics } from "../ebpf/signoz-metrics";
 import { computeEvidenceCompleteness } from "./evidence-completeness";
+import { computeAiConfidence } from "./ai-confidence";
 import { buildEvidenceCitationCatalog } from "./evidence-citations";
 import { buildIncidentNarrative, formatIncidentNarrativeForPrompt } from "./incident-narrative";
 import { buildStructuredEvidence, formatStructuredEvidenceForPrompt } from "./structured-evidence";
@@ -75,6 +76,7 @@ function toListItem(row: SelectInvestigation): InvestigationListItem {
     shortId: shortInvestigationId(row.id),
     title: row.title,
     status: row.status,
+    caseStatus: row.caseStatus ?? "open",
     severity: row.severity,
     affectedServices: row.affectedServices ?? [],
     createdAt: row.createdAt.toISOString(),
@@ -351,11 +353,22 @@ class InvestigationService {
       primaryService: row.primaryService,
     });
 
+    const investigationContext = (row.investigationContext as InvestigationContext | null) ?? null;
+    const ebpfCount = mappedTimeline.filter((entry) => entry.kind === "EBPF").length;
+    const aiConfidence = computeAiConfidence({
+      completenessPercent: evidenceCompleteness.completenessPercent,
+      canConclude: evidenceCompleteness.canConclude,
+      hasLlmSummary: Boolean(latestSummary),
+      pinpointConfidence: null,
+      timelineCount: mappedTimeline.length,
+    });
+
     return {
       investigation: {
         id: row.id,
         incidentId: row.incidentId,
         status: row.status,
+        caseStatus: row.caseStatus ?? "open",
         severity: row.severity,
         primaryService: row.primaryService,
         summary: row.summary,
@@ -373,6 +386,12 @@ class InvestigationService {
             generatedAt: latestSummary.generatedAt.toISOString(),
           }
         : null,
+      aiConfidence,
+      ebpfEnrichment: {
+        recommended: investigationContext ? needsEbpfEnrichment(investigationContext) : false,
+        collected: ebpfCount > 0,
+        canTrigger: isSignozConfigured(),
+      },
       evidenceCompleteness,
       structuredEvidence,
       evidenceCitations,
@@ -424,6 +443,7 @@ class InvestigationService {
           externalId: fingerprint,
           title,
           status: "building",
+          caseStatus: "investigating",
           severity: alert.labels.severity ?? payload.commonLabels?.severity ?? null,
           primaryService,
           startedAt: window.start,
@@ -787,6 +807,7 @@ class InvestigationService {
         .update(investigationsTable)
         .set({
           status: "ready",
+          caseStatus: row.caseStatus === "investigating" ? "open" : row.caseStatus,
           summary: summaryText,
           primaryService: service,
           completedAt: new Date(),
@@ -1281,6 +1302,96 @@ class InvestigationService {
       structuredEvidenceBlock: formatStructuredEvidenceForPrompt(context.structuredEvidence),
       incidentNarrativeBlock: formatIncidentNarrativeForPrompt(context.incidentNarrative),
     });
+  }
+
+  async updateCaseStatus(
+    investigationId: string,
+    userId: string,
+    caseStatus: "open" | "investigating" | "monitoring" | "resolved",
+  ) {
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || !canAccessInvestigation(row, userId)) return null;
+
+    const [updated] = await db
+      .update(investigationsTable)
+      .set({ caseStatus, updatedAt: new Date() })
+      .where(eq(investigationsTable.id, investigationId))
+      .returning();
+
+    return updated ? toListItem(updated) : null;
+  }
+
+  async triggerEbpfEnrichment(investigationId: string, userId: string) {
+    const [row] = await db
+      .select()
+      .from(investigationsTable)
+      .where(eq(investigationsTable.id, investigationId))
+      .limit(1);
+
+    if (!row || !canAccessInvestigation(row, userId)) return null;
+
+    const context = (row.investigationContext as InvestigationContext | null) ?? null;
+    if (!context || !needsEbpfEnrichment(context)) {
+      return { added: 0, message: "eBPF enrichment is not recommended for this case." };
+    }
+
+    if (!isSignozConfigured()) {
+      return { added: 0, message: "SigNoz is not configured — cannot load kernel metrics." };
+    }
+
+    const service = row.primaryService ?? row.affectedServices[0] ?? getDefaultServiceName();
+    const startMs = row.incidentWindowStart?.getTime() ?? Date.now() - 15 * 60 * 1000;
+    const endMs = row.incidentWindowEnd?.getTime() ?? Date.now();
+
+    const existingEbpf = await db
+      .select({ id: investigationTimelineEntriesTable.id })
+      .from(investigationTimelineEntriesTable)
+      .where(
+        and(
+          eq(investigationTimelineEntriesTable.investigationId, investigationId),
+          eq(investigationTimelineEntriesTable.kind, "EBPF"),
+        ),
+      )
+      .limit(1);
+
+    if (existingEbpf.length > 0) {
+      return { added: 0, message: "eBPF signals already collected for this case." };
+    }
+
+    const ebpfEvidence = await enrichEbpfFromSignozMetrics({ service, startMs, endMs });
+    if (ebpfEvidence.length === 0) {
+      return { added: 0, message: "No eBPF-derived metrics found in SigNoz for this window." };
+    }
+
+    const [lastEntry] = await db
+      .select({ sortOrder: investigationTimelineEntriesTable.sortOrder })
+      .from(investigationTimelineEntriesTable)
+      .where(eq(investigationTimelineEntriesTable.investigationId, investigationId))
+      .orderBy(desc(investigationTimelineEntriesTable.sortOrder))
+      .limit(1);
+
+    let sortOrder = (lastEntry?.sortOrder ?? 0) + 1;
+    for (const evidence of ebpfEvidence) {
+      await insertTimelineEntry({
+        investigationId,
+        occurredAt: new Date(evidence.occurredAt),
+        kind: "EBPF",
+        title: evidence.title,
+        detail: evidence.detail,
+        source: evidence.source ?? "signoz-metrics",
+        sortOrder: sortOrder++,
+      });
+    }
+
+    return {
+      added: ebpfEvidence.length,
+      message: `Added ${ebpfEvidence.length} eBPF timeline entries from SigNoz metrics.`,
+    };
   }
 
   async rerunAllPipelines(): Promise<number> {

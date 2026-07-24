@@ -28,6 +28,7 @@ export const investigationListItemSchema = z.object({
   shortId: z.string(),
   title: z.string(),
   status: z.enum(["building", "ready", "failed"]),
+  caseStatus: z.enum(["open", "investigating", "monitoring", "resolved"]),
   severity: z.string().nullable(),
   affectedServices: z.array(z.string()),
   createdAt: z.string(),
@@ -98,6 +99,7 @@ export const investigationOsContextSchema = z.object({
     id: z.string(),
     incidentId: z.string().nullable(),
     status: z.enum(["building", "ready", "failed"]),
+    caseStatus: z.enum(["open", "investigating", "monitoring", "resolved"]),
     severity: z.string().nullable(),
     primaryService: z.string().nullable(),
     summary: z.string().nullable(),
@@ -118,6 +120,15 @@ export const investigationOsContextSchema = z.object({
       generatedAt: z.string(),
     })
     .nullable(),
+  aiConfidence: z.object({
+    level: z.enum(["high", "medium", "low"]),
+    rationale: z.string(),
+  }),
+  ebpfEnrichment: z.object({
+    recommended: z.boolean(),
+    collected: z.boolean(),
+    canTrigger: z.boolean(),
+  }),
   evidenceCompleteness: z.object({
     completenessPercent: z.number(),
     canConclude: z.boolean(),

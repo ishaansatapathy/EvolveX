@@ -2135,6 +2135,121 @@
   margin-top: 0.85rem;
 }
 
+.evx-dash__incident-status.st-ready {
+  color: var(--evx-yellow);
+  border: 1px solid rgba(230, 255, 0, 0.45);
+  background: rgba(230, 255, 0, 0.06);
+}
+
+.evx-dash__incident-status.st-open {
+  color: #ff6b6b;
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  background: rgba(255, 107, 107, 0.06);
+}
+
+.evx-dash__incident-status.st-monitoring {
+  color: #7ab8ff;
+  border: 1px solid rgba(122, 184, 255, 0.45);
+  background: rgba(122, 184, 255, 0.06);
+}
+
+.evx-dash__incident-status.st-resolved {
+  color: #6fdc8c;
+  border: 1px solid rgba(111, 220, 140, 0.45);
+  background: rgba(111, 220, 140, 0.08);
+}
+
+.evx-dash__case-status-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.evx-dash__case-status-btn {
+  padding: 0.32em 0.7em;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  color: rgba(240, 240, 235, 0.62);
+  background: rgba(240, 240, 235, 0.04);
+  border: 1px solid rgba(240, 240, 235, 0.16);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.evx-dash__case-status-btn.is-active,
+.evx-dash__case-status-btn:hover {
+  color: #111;
+  background: var(--evx-yellow);
+  border-color: var(--evx-yellow);
+}
+
+.evx-dash__case-status-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.evx-dash__cause-ai-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  margin-bottom: 0.15rem;
+}
+
+.evx-dash__ai-confidence {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18em 0.55em;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid rgba(17, 17, 17, 0.18);
+}
+
+.evx-dash__ai-confidence--high {
+  color: #111;
+  background: rgba(111, 220, 140, 0.55);
+}
+
+.evx-dash__ai-confidence--medium {
+  color: #111;
+  background: rgba(255, 159, 64, 0.45);
+}
+
+.evx-dash__ai-confidence--low {
+  color: #111;
+  background: rgba(255, 107, 107, 0.35);
+}
+
+.evx-dash__ebpf-card {
+  margin-bottom: 0.75rem;
+  border-left: 3px solid rgba(86, 211, 100, 0.55);
+}
+
+.evx-dash__case-status.st-open {
+  border-color: rgba(255, 107, 107, 0.45);
+  color: #ff6b6b;
+}
+
+.evx-dash__case-status.st-monitoring {
+  border-color: rgba(122, 184, 255, 0.45);
+  color: #7ab8ff;
+}
+
+.evx-dash__case-status.st-resolved {
+  border-color: rgba(111, 220, 140, 0.45);
+  color: #6fdc8c;
+}
+
 .evx-dash__detail--case .evx-dash__event:hover {
   transform: translateX(2px);
 }

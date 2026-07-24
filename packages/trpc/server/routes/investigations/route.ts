@@ -347,4 +347,48 @@ export const investigationsRouter = router({
         mapServiceError(error);
       }
     }),
+
+  updateCaseStatus: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        caseStatus: z.enum(["open", "investigating", "monitoring", "resolved"]),
+      }),
+    )
+    .output(investigationListItemSchema.nullable())
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await investigationService.updateCaseStatus(
+          input.id,
+          ctx.user.id,
+          input.caseStatus,
+        );
+        if (!result) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+        }
+        return result;
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
+  triggerEbpfEnrichment: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .output(
+      z.object({
+        added: z.number(),
+        message: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await investigationService.triggerEbpfEnrichment(input.id, ctx.user.id);
+        if (!result) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+        }
+        return result;
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
 });

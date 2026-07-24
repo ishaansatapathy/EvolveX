@@ -6,6 +6,9 @@ import { usersTable } from "./user";
 export const investigationStatusEnum = ["building", "ready", "failed"] as const;
 export type InvestigationStatus = (typeof investigationStatusEnum)[number];
 
+export const investigationCaseStatusEnum = ["open", "investigating", "monitoring", "resolved"] as const;
+export type InvestigationCaseStatus = (typeof investigationCaseStatusEnum)[number];
+
 export const timelineKindEnum = [
   "ALERT",
   "DEPLOY",
@@ -27,6 +30,10 @@ export const investigationsTable = pgTable(
     externalId: varchar("external_id", { length: 128 }),
     title: varchar("title", { length: 255 }).notNull(),
     status: varchar("status", { length: 20 }).$type<InvestigationStatus>().default("building").notNull(),
+    caseStatus: varchar("case_status", { length: 20 })
+      .$type<InvestigationCaseStatus>()
+      .default("open")
+      .notNull(),
     severity: varchar("severity", { length: 32 }),
     primaryService: varchar("primary_service", { length: 128 }),
     summary: text("summary"),
@@ -46,6 +53,10 @@ export const investigationsTable = pgTable(
     statusCheck: check(
       "investigations_status_check",
       sql`${t.status} in ('building', 'ready', 'failed')`,
+    ),
+    caseStatusCheck: check(
+      "investigations_case_status_check",
+      sql`${t.caseStatus} in ('open', 'investigating', 'monitoring', 'resolved')`,
     ),
     userIdIdx: index("investigations_user_id_idx").on(t.userId),
   }),

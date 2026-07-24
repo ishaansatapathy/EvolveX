@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 
+import { AiConfidenceBadge } from "~/components/evolvex/ai-confidence-badge";
 import { AppPageHeader } from "~/components/evolvex/app-shell";
+import { CaseStatusControls } from "~/components/evolvex/case-status-controls";
 import { EvidenceCitationMarkdown } from "~/components/evolvex/evidence-citation-markdown";
 import { IncidentNarrativePanel } from "~/components/evolvex/incident-narrative-panel";
 import { InvestigationCaseNav } from "~/components/evolvex/investigation-case-nav";
@@ -34,10 +36,16 @@ function downloadTextFile(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
-function mapUiStatus(status: "building" | "ready" | "failed") {
-  if (status === "building") return "INVESTIGATING";
-  if (status === "failed") return "FAILED";
-  return "READY";
+function mapUiStatus(
+  pipelineStatus: "building" | "ready" | "failed",
+  caseStatus: "open" | "investigating" | "monitoring" | "resolved",
+) {
+  if (pipelineStatus === "building") return "INVESTIGATING";
+  if (pipelineStatus === "failed") return "FAILED";
+  if (caseStatus === "investigating") return "INVESTIGATING";
+  if (caseStatus === "monitoring") return "MONITORING";
+  if (caseStatus === "resolved") return "RESOLVED";
+  return "OPEN";
 }
 
 function formatSeverityLabel(value: string | null | undefined) {
@@ -95,6 +103,17 @@ export default function InvestigationsPage() {
   });
 
   const suggestFixMutation = trpc.investigations.suggestFix.useMutation();
+  const updateCaseStatusMutation = trpc.investigations.updateCaseStatus.useMutation({
+    onSuccess: () => {
+      void listQuery.refetch();
+      void contextQuery.refetch();
+    },
+  });
+  const triggerEbpfMutation = trpc.investigations.triggerEbpfEnrichment.useMutation({
+    onSuccess: () => {
+      void contextQuery.refetch();
+    },
+  });
   const postmortemExportQuery = trpc.investigations.exportPostmortem.useQuery(
     { id: activeId ?? "" },
     { enabled: false },
@@ -289,8 +308,8 @@ export default function InvestigationsPage() {
                         <span className={`evx-dash__incident-severity sev-${mapSeverity(inc.severity)}`}>
                           {formatSeverityLabel(inc.severity)}
                         </span>
-                        <span className={`evx-dash__incident-status st-${mapUiStatus(inc.status).toLowerCase()}`}>
-                          {mapUiStatus(inc.status)}
+                        <span className={`evx-dash__incident-status st-${mapUiStatus(inc.status, inc.caseStatus).toLowerCase()}`}>
+                          {mapUiStatus(inc.status, inc.caseStatus)}
                         </span>
                       </span>
                     </span>
@@ -326,8 +345,8 @@ export default function InvestigationsPage() {
                     <h2 className="evx-dash__case-hero-title">{activeListItem.title}</h2>
                   </div>
                   <div className="evx-dash__case-hero-badges">
-                    <span className={`evx-dash__chip evx-dash__case-status st-${mapUiStatus(activeListItem.status).toLowerCase()}`}>
-                      {mapUiStatus(activeListItem.status)}
+                    <span className={`evx-dash__chip evx-dash__case-status st-${mapUiStatus(activeListItem.status, osContext.investigation.caseStatus).toLowerCase()}`}>
+                      {mapUiStatus(activeListItem.status, osContext.investigation.caseStatus)}
                     </span>
                     {osContext.evidenceCompleteness ? (
                       <span
@@ -341,6 +360,15 @@ export default function InvestigationsPage() {
                 </div>
 
                 <InvestigationCaseNav onJump={scrollToSection} />
+
+                <CaseStatusControls
+                  value={osContext.investigation.caseStatus}
+                  disabled={updateCaseStatusMutation.isPending || activeListItem.status === "building"}
+                  onChange={(caseStatus) => {
+                    if (!activeId) return;
+                    updateCaseStatusMutation.mutate({ id: activeId, caseStatus });
+                  }}
+                />
 
                 <div className="evx-dash__case-hero-actions">
                   <button type="button" className="evx-dash__btn-primary" onClick={scrollToTimeline}>
@@ -398,7 +426,13 @@ export default function InvestigationsPage() {
 
                   {osContext.llmSummary ? (
                     <section className="evx-dash__cause evx-dash__cause--ai">
-                      <p className="evx-dash__cause-kicker">✦ AI ROOT CAUSE</p>
+                      <div className="evx-dash__cause-ai-head">
+                        <p className="evx-dash__cause-kicker">✦ AI ROOT CAUSE</p>
+                        <AiConfidenceBadge
+                          level={osContext.aiConfidence.level}
+                          rationale={osContext.aiConfidence.rationale}
+                        />
+                      </div>
                       <div className="evx-dash__cause-text">
                         <EvidenceCitationMarkdown
                           markdown={osContext.llmSummary.markdown}
@@ -445,6 +479,32 @@ export default function InvestigationsPage() {
 
               <section id="case-evidence" className="evx-dash__case-section">
                 <p className="evx-dash__case-section-label">Evidence</p>
+                {osContext.ebpfEnrichment.recommended && !osContext.ebpfEnrichment.collected ? (
+                  <section className="evx-dash__context-card evx-dash__ebpf-card">
+                    <p className="evx-dash__context-card-title">KERNEL SIGNALS · EBPF</p>
+                    <p className="evx-dash__stat-note">
+                      Tail latency case — kernel/network metrics can explain p99 degradation beyond trace averages.
+                    </p>
+                    <button
+                      type="button"
+                      className="evx-dash__btn-primary"
+                      style={{ marginTop: "0.6rem" }}
+                      disabled={!osContext.ebpfEnrichment.canTrigger || triggerEbpfMutation.isPending}
+                      onClick={() => activeId && triggerEbpfMutation.mutate({ id: activeId })}
+                    >
+                      {triggerEbpfMutation.isPending
+                        ? "Collecting…"
+                        : osContext.ebpfEnrichment.canTrigger
+                          ? "Collect eBPF signals from SigNoz"
+                          : "SigNoz not configured"}
+                    </button>
+                    {triggerEbpfMutation.data?.message ? (
+                      <p className="evx-dash__stat-note" style={{ marginTop: "0.45rem" }}>
+                        {triggerEbpfMutation.data.message}
+                      </p>
+                    ) : null}
+                  </section>
+                ) : null}
                 {osContext.incidentNarrative && !osContext.incidentNarrative.empty ? (
                   <IncidentNarrativePanel
                     variant="chronology"

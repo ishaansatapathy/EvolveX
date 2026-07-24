@@ -8,6 +8,7 @@ const baseContext: InvestigationOsContext = {
     id: "11111111-1111-1111-1111-111111111111",
     incidentId: "EVX-001",
     status: "ready",
+    caseStatus: "open",
     severity: "high",
     primaryService: "payments-svc",
     summary: "Tail latency spike correlated with deploy.",
@@ -53,6 +54,15 @@ const baseContext: InvestigationOsContext = {
   llmSummary: {
     markdown: "## Summary\nCheckout latency degraded after deploy [T1].",
     generatedAt: "2026-01-01T12:35:00.000Z",
+  },
+  aiConfidence: {
+    level: "medium",
+    rationale: "Partial evidence with AI summary.",
+  },
+  ebpfEnrichment: {
+    recommended: true,
+    collected: false,
+    canTrigger: true,
   },
   evidenceCompleteness: {
     completenessPercent: 72,
