@@ -134,6 +134,24 @@ export const investigationOsContextSchema = z.object({
       }),
     ),
   }),
+  structuredEvidence: z.object({
+    sections: z.array(
+      z.object({
+        id: z.enum(["deployment", "traces", "logs", "metrics", "infrastructure"]),
+        title: z.string(),
+        empty: z.boolean(),
+        fields: z.array(z.object({ label: z.string(), value: z.string() })),
+        items: z.array(
+          z.object({
+            primary: z.string(),
+            secondary: z.string().optional(),
+            occurredAt: z.string(),
+            timelineEntryId: z.string().optional(),
+          }),
+        ),
+      }),
+    ),
+  }),
 });
 
 export const investigationNoteSchema = z.object({

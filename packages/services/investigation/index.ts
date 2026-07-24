@@ -35,6 +35,7 @@ import {
 } from "./correlation";
 import { enrichEbpfFromSignozMetrics } from "../ebpf/signoz-metrics";
 import { computeEvidenceCompleteness } from "./evidence-completeness";
+import { buildStructuredEvidence, formatStructuredEvidenceForPrompt } from "./structured-evidence";
 import { computeInvestigationPinpoint, loadPinpointFileSnippet } from "./pinpoint";
 import { suggestInvestigationFix } from "./fix-suggestion";
 import { parseEbpfEvent, type EbpfEventPayload } from "../ebpf/webhook-parser";
@@ -302,6 +303,27 @@ class InvestigationService {
       status: row.status,
     });
 
+    const mappedRuntimeSignals = runtimeSignals.map(
+      (item): RuntimeSignalRowDto => ({
+        id: item.id,
+        traceId: item.traceId,
+        service: item.service,
+        metric: item.metric,
+        latencyMs: item.latencyMs,
+        p95Ms: item.p95Ms,
+        p99Ms: item.p99Ms,
+        errorRate: item.errorRate,
+        signalTimestamp: item.signalTimestamp.toISOString(),
+        metadata: item.metadata ?? {},
+      }),
+    );
+
+    const structuredEvidence = buildStructuredEvidence({
+      timeline: mappedTimeline,
+      changeEvents: mappedChangeEvents,
+      runtimeSignals: mappedRuntimeSignals,
+    });
+
     return {
       investigation: {
         id: row.id,
@@ -327,20 +349,7 @@ class InvestigationService {
         }),
       ),
       changeEvents: mappedChangeEvents,
-      runtimeSignals: runtimeSignals.map(
-        (item): RuntimeSignalRowDto => ({
-          id: item.id,
-          traceId: item.traceId,
-          service: item.service,
-          metric: item.metric,
-          latencyMs: item.latencyMs,
-          p95Ms: item.p95Ms,
-          p99Ms: item.p99Ms,
-          errorRate: item.errorRate,
-          signalTimestamp: item.signalTimestamp.toISOString(),
-          metadata: item.metadata ?? {},
-        }),
-      ),
+      runtimeSignals: mappedRuntimeSignals,
       dependencies: { nodes, edges },
       llmSummary: latestSummary
         ? {
@@ -349,6 +358,7 @@ class InvestigationService {
           }
         : null,
       evidenceCompleteness,
+      structuredEvidence,
     };
   }
 
@@ -645,7 +655,7 @@ class InvestigationService {
 
       const summaryText = buildPersistedSummary(context);
 
-      const [timelineRows, changeRows, runtimeCount] = await Promise.all([
+      const [timelineRows, changeRows, runtimeRows] = await Promise.all([
         db
           .select()
           .from(investigationTimelineEntriesTable)
@@ -656,10 +666,38 @@ class InvestigationService {
           .from(changeEventsTable)
           .where(eq(changeEventsTable.investigationId, investigationId)),
         db
-          .select({ id: runtimeSignalsTable.id })
+          .select()
           .from(runtimeSignalsTable)
           .where(eq(runtimeSignalsTable.investigationId, investigationId)),
       ]);
+
+      const mappedRuntimeRows: RuntimeSignalRowDto[] = runtimeRows.map((item) => ({
+        id: item.id,
+        traceId: item.traceId,
+        service: item.service,
+        metric: item.metric,
+        latencyMs: item.latencyMs,
+        p95Ms: item.p95Ms,
+        p99Ms: item.p99Ms,
+        errorRate: item.errorRate,
+        signalTimestamp: item.signalTimestamp.toISOString(),
+        metadata: item.metadata ?? {},
+      }));
+
+      const structuredForLlm = buildStructuredEvidence({
+        timeline: timelineRows.map(toTimelineEntry),
+        changeEvents: changeRows.map(
+          (item): ChangeEventRowDto => ({
+            id: item.id,
+            type: item.type,
+            service: item.service,
+            author: item.author,
+            occurredAt: item.occurredAt.toISOString(),
+            metadata: item.metadata ?? {},
+          }),
+        ),
+        runtimeSignals: mappedRuntimeRows,
+      });
 
       await generateAndPersistInvestigationSummary({
         investigationId,
@@ -679,7 +717,8 @@ class InvestigationService {
           author: event.author,
           occurredAt: event.occurredAt.toISOString(),
         })),
-        runtimeSignalCount: runtimeCount.length,
+        runtimeSignalCount: runtimeRows.length,
+        structuredEvidenceBlock: formatStructuredEvidenceForPrompt(structuredForLlm),
       }).then(async (llmResult) => {
         if (!llmResult) return;
 
@@ -1148,6 +1187,7 @@ class InvestigationService {
         occurredAt: event.occurredAt,
       })),
       runtimeSignalCount: context.runtimeSignals.length,
+      structuredEvidenceBlock: formatStructuredEvidenceForPrompt(context.structuredEvidence),
     });
   }
 

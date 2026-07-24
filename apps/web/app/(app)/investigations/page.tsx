@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 
 import { AppPageHeader } from "~/components/evolvex/app-shell";
+import { StructuredEvidencePanel } from "~/components/evolvex/structured-evidence-panel";
 import { trpc } from "~/trpc/client";
 
 function formatRelativeTime(iso: string) {
@@ -33,14 +34,6 @@ function mapSeverity(value: string | null | undefined) {
   return "medium";
 }
 
-function formatChangeEvent(type: string, metadata: Record<string, unknown>) {
-  if (type === "commit" || type === "deployment") {
-    const sha = typeof metadata.sha === "string" ? metadata.sha : null;
-    const repo = typeof metadata.repo === "string" ? metadata.repo : null;
-    if (repo && sha) return `${repo}@${sha}`;
-  }
-  return type;
-}
 
 export default function InvestigationsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -114,6 +107,17 @@ export default function InvestigationsPage() {
 
   function scrollToTimeline() {
     timelineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function scrollToTimelineEntry(entryId: string) {
+    const entry = timelineRef.current?.querySelector(`[data-timeline-entry-id="${entryId}"]`);
+    if (entry instanceof HTMLElement) {
+      entry.scrollIntoView({ behavior: "smooth", block: "center" });
+      entry.classList.add("is-citation-highlight");
+      window.setTimeout(() => entry.classList.remove("is-citation-highlight"), 2200);
+      return;
+    }
+    scrollToTimeline();
   }
 
   if (listQuery.isLoading) {
@@ -280,6 +284,13 @@ export default function InvestigationsPage() {
                 </section>
               ) : null}
 
+              {osContext.structuredEvidence ? (
+                <StructuredEvidencePanel
+                  sections={osContext.structuredEvidence.sections}
+                  onCitationClick={scrollToTimelineEntry}
+                />
+              ) : null}
+
               {pinpointQuery.data?.primary ? (
                 <section className="evx-dash__context-card evx-dash__pinpoint-card">
                   <p className="evx-dash__context-card-title">📍 LIKELY CULPRIT · PINPOINT</p>
@@ -431,7 +442,7 @@ export default function InvestigationsPage() {
                   <p className="evx-dash__stat-note">Timeline entries will appear as evidence is collected.</p>
                 ) : (
                   timeline.map((ev) => (
-                    <div key={ev.id} className="evx-dash__event">
+                    <div key={ev.id} className="evx-dash__event" data-timeline-entry-id={ev.id}>
                       <span className="evx-dash__event-at">{formatEventTime(ev.occurredAt)}</span>
                       <span className={`evx-dash__event-kind k-${ev.kind.toLowerCase()}`}>{ev.kind}</span>
                       <span className="evx-dash__event-text">
@@ -441,48 +452,6 @@ export default function InvestigationsPage() {
                     </div>
                   ))
                 )}
-              </div>
-
-              <div className="evx-dash__context-grid">
-                <section className="evx-dash__context-card">
-                  <p className="evx-dash__context-card-title">RUNTIME SIGNALS · SIGNOZ</p>
-                  {osContext.runtimeSignals.length === 0 ? (
-                    <p className="evx-dash__stat-note">No runtime signals stored yet.</p>
-                  ) : (
-                    <div className="evx-dash__table">
-                      {osContext.runtimeSignals.slice(0, 6).map((signal) => (
-                        <div key={signal.id} className="evx-dash__row" style={{ gridTemplateColumns: "72px 1fr 72px" }}>
-                          <span className="evx-dash__chip">{signal.metric ?? "trace"}</span>
-                          <span className="evx-dash__event-text">
-                            {signal.service ?? primaryService}
-                            {signal.traceId ? ` · ${signal.traceId.slice(0, 12)}…` : ""}
-                          </span>
-                          <span className="evx-dash__event-at">{signal.latencyMs ? `${signal.latencyMs}ms` : "—"}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-
-                <section className="evx-dash__context-card">
-                  <p className="evx-dash__context-card-title">CHANGE EVENTS · GITHUB / K8S</p>
-                  {osContext.changeEvents.length === 0 ? (
-                    <p className="evx-dash__stat-note">No deploy/commit events correlated yet.</p>
-                  ) : (
-                    <div className="evx-dash__table">
-                      {osContext.changeEvents.map((event) => (
-                        <div key={event.id} className="evx-dash__row" style={{ gridTemplateColumns: "72px 1fr 64px" }}>
-                          <span className="evx-dash__chip">{event.type}</span>
-                          <span className="evx-dash__event-text">
-                            {formatChangeEvent(event.type, event.metadata)}
-                            {event.author ? ` · ${event.author}` : ""}
-                          </span>
-                          <span className="evx-dash__event-at">{formatEventTime(event.occurredAt)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
               </div>
 
               {osContext.dependencies.nodes.length > 0 ? (
