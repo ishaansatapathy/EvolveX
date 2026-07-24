@@ -49,7 +49,7 @@ export function IncidentNarrativePanel({
         <p className="evx-dash__context-card-title">CHRONOLOGY · TIMELINE BEATS</p>
         <ol className="evx-dash__narrative-beats">
           {beats.map((beat) => (
-            <li key={beat.timelineEntryId} className="evx-dash__narrative-beat">
+            <li key={beat.timelineEntryId} className="evx-dash__narrative-beat" data-timeline-entry-id={beat.timelineEntryId}>
               <div className="evx-dash__narrative-beat-head">
                 <span className={`evx-dash__chip k-${beat.kind.toLowerCase()}`}>{beat.kind}</span>
                 {beat.citationRef ? (

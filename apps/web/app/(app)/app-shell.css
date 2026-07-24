@@ -365,11 +365,41 @@
   gap: 0.6rem;
 }
 
+.evx-dash__incidents-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.85rem 0.9rem 1rem;
+  background: rgba(240, 240, 235, 0.02);
+  border: 1.5px dashed rgba(240, 240, 235, 0.22);
+  border-radius: 10px;
+}
+
+.evx-dash__incidents-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.15rem;
+}
+
+.evx-dash__incidents-panel-head .evx-dash__panel-label {
+  margin: 0;
+}
+
+.evx-dash__incidents-count {
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  color: rgba(240, 240, 235, 0.42);
+  white-space: nowrap;
+}
+
 .evx-dash__incident {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.8rem 0.9rem;
+  gap: 0.45rem;
+  padding: 0.85rem 0.95rem;
   text-align: left;
   background: rgba(240, 240, 235, 0.04);
   border: 1.5px solid rgba(240, 240, 235, 0.18);
@@ -414,9 +444,16 @@
 
 .evx-dash__incident-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+.evx-dash__incident-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem;
 }
 
 .evx-dash__incident-id {
@@ -424,6 +461,52 @@
   font-size: 0.6rem;
   letter-spacing: 0.12em;
   color: rgba(240, 240, 235, 0.5);
+  padding-top: 0.1rem;
+}
+
+.evx-dash__incident-viewing {
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 0.18em 0.45em;
+  border-radius: 3px;
+  color: #111;
+  background: var(--evx-yellow);
+  border: 1px solid var(--evx-yellow);
+}
+
+.evx-dash__incident-severity {
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 0.18em 0.45em;
+  border-radius: 3px;
+}
+
+.evx-dash__incident-severity.sev-critical {
+  color: #ff4d4d;
+  border: 1px solid rgba(255, 77, 77, 0.5);
+  background: rgba(255, 77, 77, 0.08);
+}
+
+.evx-dash__incident-severity.sev-high {
+  color: #ff9f40;
+  border: 1px solid rgba(255, 159, 64, 0.5);
+  background: rgba(255, 159, 64, 0.08);
+}
+
+.evx-dash__incident-severity.sev-medium {
+  color: var(--evx-yellow);
+  border: 1px solid rgba(230, 255, 0, 0.45);
+  background: rgba(230, 255, 0, 0.06);
+}
+
+.evx-dash__incident-severity.sev-low {
+  color: #6fdc8c;
+  border: 1px solid rgba(111, 220, 140, 0.45);
+  background: rgba(111, 220, 140, 0.08);
 }
 
 .evx-dash__incident-status {
@@ -445,6 +528,18 @@
   border: 1px solid rgba(255, 159, 64, 0.5);
 }
 
+.evx-dash__incident-status.st-ready {
+  color: var(--evx-yellow);
+  border: 1px solid rgba(230, 255, 0, 0.45);
+  background: rgba(230, 255, 0, 0.06);
+}
+
+.evx-dash__incident-status.st-failed {
+  color: #ff4d4d;
+  border: 1px solid rgba(255, 77, 77, 0.55);
+  background: rgba(255, 77, 77, 0.08);
+}
+
 .evx-dash__incident-status.st-monitoring {
   color: var(--evx-yellow);
   border: 1px solid rgba(230, 255, 0, 0.45);
@@ -456,15 +551,48 @@
 }
 
 .evx-dash__incident-title {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--evx-paper);
+}
+
+.evx-dash__incident-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding-top: 0.15rem;
+  border-top: 1px dashed rgba(240, 240, 235, 0.1);
+}
+
+.evx-dash__incident-service {
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  padding: 0.12em 0.45em;
+  border-radius: 999px;
+  color: rgba(240, 240, 235, 0.72);
+  border: 1px solid rgba(240, 240, 235, 0.18);
+  background: rgba(240, 240, 235, 0.04);
 }
 
 .evx-dash__incident-meta {
   font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
-  font-size: 0.6rem;
-  color: rgba(240, 240, 235, 0.45);
+  font-size: 0.58rem;
+  color: rgba(240, 240, 235, 0.42);
+}
+
+.evx-dash__incident-evidence {
+  margin-left: auto;
+  font-family: var(--font-evolvex-typewriter), "Courier New", monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.06em;
+  color: var(--evx-yellow);
+}
+
+.evx-dash__incident-evidence.is-building {
+  color: #ff9f40;
 }
 
 /* ── Detail panel ────────────────────────────────────── */
@@ -627,6 +755,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+  width: 100%;
 }
 
 .evx-dash__timeline-label {
@@ -643,9 +772,11 @@
 
 .evx-dash__event {
   display: grid;
-  grid-template-columns: 66px 64px 1fr;
-  align-items: baseline;
-  gap: 0.7rem;
+  grid-template-columns: minmax(8.75rem, max-content) minmax(0, 1fr);
+  column-gap: 0.85rem;
+  row-gap: 0.25rem;
+  align-items: start;
+  width: 100%;
   padding: 0.5rem 0.65rem;
   border-left: 2px dashed rgba(240, 240, 235, 0.2);
   border-radius: 0 6px 6px 0;
@@ -655,6 +786,24 @@
     transform 0.25s var(--evx-bounce);
   text-decoration: none;
   color: inherit;
+}
+
+.evx-dash__event-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.evx-dash__event-meta .evx-dash__citation-badge {
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .evx-dash__event {
+    grid-template-columns: 1fr;
+  }
 }
 
 .evx-dash__event:hover {
@@ -1149,21 +1298,35 @@
 }
 
 .evx-dash__narrative-beat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.55rem;
   padding-left: 0.15rem;
 }
 
 .evx-dash__narrative-beat-head {
-  display: flex;
+  display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 0.4rem;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0;
 }
 
 .evx-dash__narrative-sentence {
+  flex: 1 1 12rem;
+  min-width: 0;
   margin: 0;
   font-size: 0.8rem;
   line-height: 1.45;
   color: rgba(240, 240, 235, 0.88);
+}
+
+.evx-dash__narrative-beat.is-citation-highlight {
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(230, 255, 0, 0.08);
+  box-shadow: 0 0 0 1px rgba(230, 255, 0, 0.25);
 }
 
 .evx-dash__chip--high {
@@ -1240,9 +1403,26 @@
 }
 
 .evx-dash__event-text {
+  grid-column: 2;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
   font-size: 0.74rem;
   line-height: 1.45;
   color: rgba(240, 240, 235, 0.75);
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .evx-dash__event-text {
+    grid-column: 1;
+  }
+}
+
+.evx-dash__event-source {
+  opacity: 0.55;
 }
 
 .evx-dash__toolbar {
@@ -1530,8 +1710,14 @@
   overflow: hidden;
 }
 
+.evx-dash__grid--investigations > * {
+  min-height: 0;
+}
+
 .evx-dash__incidents--fixed {
-  align-self: stretch;
+  position: sticky;
+  top: 0;
+  align-self: start;
   overflow: hidden;
   padding-right: 0.15rem;
 }
@@ -1540,8 +1726,10 @@
   overflow-x: hidden;
   overflow-y: auto;
   min-height: 0;
+  max-height: 100%;
   align-self: stretch;
   scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 900px) {
@@ -1566,7 +1754,11 @@
 .evx-dash__detail--case {
   gap: 0;
   padding: 0;
-  overflow: hidden;
+}
+
+.evx-dash__detail--case.evx-dash__detail--scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .evx-dash__case-shell {
@@ -1576,14 +1768,24 @@
   padding: 1rem 1.15rem 1.25rem;
 }
 
-.evx-dash__detail--case .evx-dash__context-card,
-.evx-dash__detail--case .evx-dash__narrative-card {
+.evx-dash__detail--case .evx-dash__completeness-card,
+.evx-dash__detail--case .evx-dash__pinpoint-card,
+.evx-dash__detail--case .evx-dash__structured-grid .evx-dash__context-card {
   transform: none;
+}
+
+.evx-dash__detail--case .evx-dash__completeness-card:hover,
+.evx-dash__detail--case .evx-dash__pinpoint-card:hover,
+.evx-dash__detail--case .evx-dash__structured-grid .evx-dash__context-card:hover {
+  transform: translateY(-2px);
+}
+
+.evx-dash__detail--case .evx-dash__narrative-card {
   margin-top: 0;
 }
 
-.evx-dash__detail--case .evx-dash__context-card:hover {
-  transform: translateY(-2px);
+#case-evidence > .evx-dash__narrative-card {
+  margin-bottom: 0.75rem;
 }
 
 .evx-dash__case-hero {
@@ -1758,10 +1960,6 @@
 }
 
 .evx-dash__case-evidence-intro {
-  margin-bottom: 0.75rem;
-}
-
-#case-evidence > .evx-dash__narrative-card {
   margin-bottom: 0.75rem;
 }
 

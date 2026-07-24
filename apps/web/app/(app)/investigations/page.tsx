@@ -35,8 +35,13 @@ function downloadTextFile(filename: string, content: string) {
 
 function mapUiStatus(status: "building" | "ready" | "failed") {
   if (status === "building") return "INVESTIGATING";
-  if (status === "failed") return "OPEN";
-  return "OPEN";
+  if (status === "failed") return "FAILED";
+  return "READY";
+}
+
+function formatSeverityLabel(value: string | null | undefined) {
+  const normalized = mapSeverity(value);
+  return normalized.toUpperCase();
 }
 
 function mapSeverity(value: string | null | undefined) {
@@ -155,7 +160,7 @@ export default function InvestigationsPage() {
   }
 
   function scrollToTimelineEntry(entryId: string) {
-    const entry = timelineRef.current?.querySelector(`[data-timeline-entry-id="${entryId}"]`);
+    const entry = detailScrollRef.current?.querySelector(`[data-timeline-entry-id="${entryId}"]`);
     if (entry instanceof HTMLElement) {
       scrollWithinDetail(entry, 48);
       entry.classList.add("is-citation-highlight");
@@ -256,26 +261,51 @@ export default function InvestigationsPage() {
 
       <section className="evx-dash__grid evx-dash__grid--investigations">
         <div className="evx-dash__incidents evx-dash__incidents--fixed">
-          <p className="evx-dash__panel-label">INCIDENT QUEUE</p>
-          {investigations.map((inc) => (
-            <button
-              key={inc.id}
-              type="button"
-              className={`evx-dash__incident sev-${mapSeverity(inc.severity)} ${activeId === inc.id ? "is-selected" : ""}`}
-              onClick={() => setSelectedId(inc.id)}
-            >
-              <span className="evx-dash__incident-top">
-                <span className="evx-dash__incident-id">{inc.shortId}</span>
-                <span className={`evx-dash__incident-status st-${mapUiStatus(inc.status).toLowerCase()}`}>
-                  {mapUiStatus(inc.status)}
-                </span>
-              </span>
-              <span className="evx-dash__incident-title">{inc.title}</span>
-              <span className="evx-dash__incident-meta">
-                {inc.affectedServices[0] ?? "unknown"} · {formatRelativeTime(inc.createdAt)}
-              </span>
-            </button>
-          ))}
+          <div className="evx-dash__incidents-panel">
+            <div className="evx-dash__incidents-panel-head">
+              <p className="evx-dash__panel-label">INCIDENT QUEUE</p>
+              <span className="evx-dash__incidents-count">{investigations.length} active</span>
+            </div>
+            {investigations.map((inc) => {
+              const isActive = activeId === inc.id;
+              const evidencePercent =
+                isActive && contextQuery.data?.evidenceCompleteness
+                  ? contextQuery.data.evidenceCompleteness.completenessPercent
+                  : null;
+
+              return (
+                <button
+                  key={inc.id}
+                  type="button"
+                  className={`evx-dash__incident sev-${mapSeverity(inc.severity)} ${isActive ? "is-selected" : ""}`}
+                  onClick={() => setSelectedId(inc.id)}
+                >
+                  <span className="evx-dash__incident-top">
+                    <span className="evx-dash__incident-id">{inc.shortId}</span>
+                    <span className="evx-dash__incident-badges">
+                      {isActive ? <span className="evx-dash__incident-viewing">VIEWING</span> : null}
+                      <span className={`evx-dash__incident-severity sev-${mapSeverity(inc.severity)}`}>
+                        {formatSeverityLabel(inc.severity)}
+                      </span>
+                      <span className={`evx-dash__incident-status st-${mapUiStatus(inc.status).toLowerCase()}`}>
+                        {mapUiStatus(inc.status)}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="evx-dash__incident-title">{inc.title}</span>
+                  <span className="evx-dash__incident-footer">
+                    <span className="evx-dash__incident-service">{inc.affectedServices[0] ?? "unknown"}</span>
+                    <span className="evx-dash__incident-meta">{formatRelativeTime(inc.createdAt)}</span>
+                    {evidencePercent !== null ? (
+                      <span className="evx-dash__incident-evidence">{evidencePercent}% evidence</span>
+                    ) : inc.status === "building" ? (
+                      <span className="evx-dash__incident-evidence is-building">collecting…</span>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div ref={detailScrollRef} className="evx-dash__detail evx-dash__detail--case evx-dash__detail--scroll">
@@ -572,25 +602,30 @@ export default function InvestigationsPage() {
 
               <section id="case-timeline" className="evx-dash__case-section" ref={timelineRef}>
                 <p className="evx-dash__case-section-label">Timeline</p>
-                <div className="evx-dash__timeline">
-                  {timeline.length === 0 ? (
-                    <p className="evx-dash__stat-note">Timeline entries will appear as evidence is collected.</p>
-                  ) : (
-                    timeline.map((ev) => (
-                      <div key={ev.id} className="evx-dash__event" data-timeline-entry-id={ev.id}>
-                        <span className="evx-dash__event-at">{formatEventTime(ev.occurredAt)}</span>
-                        {timelineCitationRefById.get(ev.id) ? (
-                          <span className="evx-dash__citation-badge">{timelineCitationRefById.get(ev.id)}</span>
-                        ) : null}
-                        <span className={`evx-dash__event-kind k-${ev.kind.toLowerCase()}`}>{ev.kind}</span>
-                        <span className="evx-dash__event-text">
-                          <strong>{ev.title}</strong> — {ev.detail}
-                          {ev.source ? <span style={{ opacity: 0.55 }}> · {ev.source}</span> : null}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
+                {timeline.length === 0 ? (
+                  <p className="evx-dash__stat-note">Timeline entries will appear as evidence is collected.</p>
+                ) : (
+                  <section className="evx-dash__context-card evx-dash__narrative-card evx-dash__timeline-card">
+                    <p className="evx-dash__context-card-title">EVIDENCE TIMELINE · POSTGRES</p>
+                    <ol className="evx-dash__narrative-beats">
+                      {timeline.map((ev) => (
+                        <li key={ev.id} className="evx-dash__narrative-beat" data-timeline-entry-id={ev.id}>
+                          <div className="evx-dash__narrative-beat-head">
+                            <span className="evx-dash__event-at">{formatEventTime(ev.occurredAt)}</span>
+                            {timelineCitationRefById.get(ev.id) ? (
+                              <span className="evx-dash__citation-badge">{timelineCitationRefById.get(ev.id)}</span>
+                            ) : null}
+                            <span className={`evx-dash__chip k-${ev.kind.toLowerCase()}`}>{ev.kind}</span>
+                          </div>
+                          <p className="evx-dash__narrative-sentence">
+                            <strong>{ev.title}</strong> — {ev.detail}
+                            {ev.source ? <span className="evx-dash__event-source"> · {ev.source}</span> : null}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                )}
               </section>
 
               <details className="evx-dash__case-more">
