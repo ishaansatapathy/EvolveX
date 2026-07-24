@@ -3,6 +3,7 @@
   "ui": "tui",
   "globalEnv": [
     "DATABASE_URL",
+    "DATABASE_URL_UNPOOLED",
     "JWT_SECRET",
     "JWT_REFRESH_SECRET",
     "CLIENT_URL",

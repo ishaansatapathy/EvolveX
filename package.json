@@ -9,6 +9,7 @@
     "db:check": "dotenv -- turbo db:check --filter=@repo/database",
     "db:seed": "dotenv -- turbo db:seed",
     "db:up": "docker compose up -d postgresdb",
+    "db:check": "dotenv -- turbo db:check --filter=@repo/database",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",

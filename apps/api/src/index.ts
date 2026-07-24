@@ -29,7 +29,7 @@ async function bootstrap() {
     if (!expressHandler) {
       writeJson(res, 503, {
         error: "Evolvex API is starting",
-        hint: "Wait a few seconds, or check Postgres (pnpm db:up) and DATABASE_URL in .env",
+        hint: "Wait a few seconds, or check DATABASE_URL (Neon) / pnpm db:up for local Postgres",
       });
       return;
     }

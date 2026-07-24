@@ -16,7 +16,7 @@ For **OpenTelemetry eBPF Instrumentation (OBI)** setup, see [docs/EBPF-OBI.md](.
 
 - Node.js 20+
 - pnpm 9+
-- Docker (PostgreSQL)
+- **Neon Postgres** (recommended) or Docker for local PostgreSQL
 - SigNoz Cloud account
 - OpenAI API key (optional — for LLM summaries)
 
@@ -25,16 +25,34 @@ For **OpenTelemetry eBPF Instrumentation (OBI)** setup, see [docs/EBPF-OBI.md](.
 ```bash
 pnpm install
 cp .env.example .env
-# Fill: DATABASE_URL, JWT_SECRET, SIGNOZ_*, INVESTIGATION_OWNER_EMAIL
+# Fill: DATABASE_URL (+ DATABASE_URL_UNPOOLED for Neon), JWT_SECRET, SIGNOZ_*, INVESTIGATION_OWNER_EMAIL
 
-pnpm db:up
-pnpm db:migrate
+pnpm db:migrate    # applies schema to Neon or local Postgres
+pnpm db:check      # verify connection
 pnpm dev
 ```
 
 - Web: http://localhost:3000
 - API: http://localhost:8000
 - Health: http://localhost:8000/health
+
+## Database (Neon — recommended)
+
+1. Create a project at [neon.tech](https://neon.tech)
+2. Copy **two** connection strings from the Neon dashboard:
+   - **Pooled** → `DATABASE_URL` (app runtime; hostname has `-pooler`)
+   - **Direct** → `DATABASE_URL_UNPOOLED` (migrations only)
+3. Paste both into `.env` (and Railway env vars on deploy)
+4. Run:
+
+```bash
+pnpm db:migrate
+pnpm db:check
+```
+
+SSL and pool sizing for Neon are handled automatically in `packages/database/pg.ts`.
+
+**Local Postgres (optional):** `pnpm db:up` then use `postgresql://postgres:postgres@localhost:5432/evolvex`
 
 ## SigNoz integration
 
@@ -67,6 +85,10 @@ pnpm obi:bridge         # Poll OBI metrics in SigNoz → Evolvex eBPF webhook
 pnpm db:seed          # Seed auth demo user
 ```
 
-## Deploy (Railway + Vercel)
+## Deploy (Railway + Vercel + Neon)
+
+- **API:** Railway (`railway.toml`) — set `DATABASE_URL` + `DATABASE_URL_UNPOOLED` from Neon
+- **Web:** Vercel (`apps/web/vercel.json`)
+- **DB:** Neon Postgres (no Railway Postgres plugin needed)
 
 See [DEMO.md](./DEMO.md) for the judge walkthrough.

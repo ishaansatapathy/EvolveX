@@ -1,5 +1,6 @@
 [build]
 builder = "NIXPACKS"
+# Requires DATABASE_URL + DATABASE_URL_UNPOOLED (Neon direct) in Railway env for migrate step
 buildCommand = "pnpm install --frozen-lockfile && pnpm db:migrate && pnpm build --filter=@repo/api"
 
 [deploy]
