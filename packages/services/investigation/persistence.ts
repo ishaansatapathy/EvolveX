@@ -29,6 +29,19 @@ function mapTimelineKindToEvidenceType(kind: TimelineKind): EvidenceType {
   return map[kind] ?? "change";
 }
 
+export function coerceValidDate(value: string | Date | undefined | null, fallback = new Date()): Date {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? fallback : value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  return fallback;
+}
+
 export async function clearDerivedInvestigationRows(investigationId: string) {
   await db.delete(evidenceTable).where(eq(evidenceTable.investigationId, investigationId));
   await db.delete(runtimeSignalsTable).where(eq(runtimeSignalsTable.investigationId, investigationId));
@@ -69,34 +82,38 @@ export async function insertTimelineEntry(input: {
   sortOrder: number;
   metadata?: Record<string, unknown>;
 }) {
-  const [entry] = await db
-    .insert(investigationTimelineEntriesTable)
-    .values({
-      investigationId: input.investigationId,
-      occurredAt: input.occurredAt,
-      kind: input.kind,
-      title: input.title,
-      detail: input.detail,
-      source: input.source,
-      sourceRef: input.sourceRef,
-      sortOrder: input.sortOrder,
-    })
-    .returning();
+  return db.transaction(async (tx) => {
+    const [entry] = await tx
+      .insert(investigationTimelineEntriesTable)
+      .values({
+        investigationId: input.investigationId,
+        occurredAt: input.occurredAt,
+        kind: input.kind,
+        title: input.title,
+        detail: input.detail,
+        source: input.source,
+        sourceRef: input.sourceRef,
+        sortOrder: input.sortOrder,
+      })
+      .returning();
 
-  if (entry) {
-    await persistTimelineEvidence({
-      investigationId: input.investigationId,
-      timelineEntryId: entry.id,
-      kind: input.kind,
-      title: input.title,
-      detail: input.detail,
-      occurredAt: input.occurredAt,
-      source: input.source,
-      metadata: input.metadata,
-    });
-  }
+    if (entry) {
+      await tx.insert(evidenceTable).values({
+        investigationId: input.investigationId,
+        timelineEntryId: entry.id,
+        type: mapTimelineKindToEvidenceType(input.kind),
+        description: `${input.title} — ${input.detail}`,
+        occurredAt: input.occurredAt,
+        metadata: {
+          source: input.source,
+          kind: input.kind,
+          ...input.metadata,
+        },
+      });
+    }
 
-  return entry;
+    return entry;
+  });
 }
 
 export async function persistRuntimeSignalsFromTraces(input: {
@@ -121,7 +138,9 @@ export async function persistRuntimeSignalsFromTraces(input: {
     p95Ms: input.classification.percentile === "p95" ? (trace.durationMs ?? null) : null,
     p99Ms: input.classification.percentile === "p99" ? (trace.durationMs ?? null) : null,
     errorRate: trace.hasError ? "1.0000" : "0.0000",
-    signalTimestamp: trace.timestamp ? new Date(trace.timestamp) : new Date(),
+    signalTimestamp: trace.timestamp && !Number.isNaN(new Date(trace.timestamp).getTime())
+      ? new Date(trace.timestamp)
+      : new Date(),
     metadata: {
       spanName: trace.name,
       spanId: trace.spanId,
@@ -166,12 +185,26 @@ async function ensureService(name: string, healthy: boolean, latencyMs: number) 
 }
 
 /** Build service graph from real SigNoz dependency API — no hardcoded edges */
-export async function buildServiceGraphFromSignoz(primaryService: string) {
+export async function buildServiceGraphFromSignoz(
+  primaryService: string,
+  options?: {
+    organizationId?: string | null;
+    startMs?: number;
+    endMs?: number;
+  },
+) {
+  const { resolveSignozConfig } = await import("../organization/integrations");
+  const config = (await resolveSignozConfig(options?.organizationId)) ?? null;
+  if (!config) return;
+
   const { fetchSignozDependencies, fetchSignozServices } = await import("../signoz/service-map");
 
+  const endMs = options?.endMs ?? Date.now();
+  const startMs = options?.startMs ?? endMs - 60 * 60 * 1000;
+
   const [services, edges] = await Promise.all([
-    fetchSignozServices(),
-    fetchSignozDependencies({ service: primaryService }),
+    fetchSignozServices({ config, startMs, endMs }),
+    fetchSignozDependencies({ service: primaryService, config, startMs, endMs }),
   ]);
 
   if (services.length === 0 && edges.length === 0) return;

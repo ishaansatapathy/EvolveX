@@ -85,7 +85,7 @@ function buildCheckoutTrace(
       startTimeUnixNano: dbStart,
       endTimeUnixNano: dbEnd,
       attributes: [
-        { key: "db.system", value: { stringValue: "postgresql" } },
+        { key: "db.system", value: { stringValue: "redis" } },
         { key: "has_error", value: { boolValue: withError } },
       ],
       status: withError ? errorStatus : okStatus,
@@ -205,6 +205,94 @@ export async function ingestTraces(config: OtlpIngestConfig, options: TraceBatch
     errorCount: options.errorCount,
     successCount: options.successCount ?? 0,
   };
+}
+
+/** Emits linked checkout-api → downstream spans for SigNoz dependency graph / cross-service RCA. */
+export async function ingestCrossServiceCheckoutTraces(
+  config: OtlpIngestConfig,
+  input: { downstreamService: string; count?: number; tailLatencyMs?: number },
+) {
+  const downstream = input.downstreamService;
+  const count = input.count ?? 5;
+  const tailLatencyMs = input.tailLatencyMs ?? 4_800;
+  const resourceSpans: Array<Record<string, unknown>> = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const offsetMs = -(i + 1) * 5_000;
+    const traceId = randomHex(16);
+    const checkoutRoot = randomHex(8);
+    const checkoutClient = randomHex(8);
+    const downstreamRoot = randomHex(8);
+    const rootStart = nowNano(offsetMs);
+    const downstreamStart = (BigInt(rootStart) + 15_000_000n).toString();
+    const downstreamEnd = (BigInt(downstreamStart) + BigInt(tailLatencyMs) * 1_000_000n).toString();
+    const checkoutEnd = (BigInt(downstreamEnd) + 20_000_000n).toString();
+
+    resourceSpans.push(
+      {
+        resource: {
+          attributes: [{ key: "service.name", value: { stringValue: "checkout-api" } }],
+        },
+        scopeSpans: [
+          {
+            scope: { name: "evolvex-loadgen", version: "1.0.0" },
+            spans: [
+              {
+                traceId,
+                spanId: checkoutRoot,
+                parentSpanId: "",
+                name: "HTTP POST /checkout",
+                kind: 2,
+                startTimeUnixNano: rootStart,
+                endTimeUnixNano: checkoutEnd,
+                attributes: [{ key: "http.route", value: { stringValue: "/checkout" } }],
+                status: { code: 1 },
+              },
+              {
+                traceId,
+                spanId: checkoutClient,
+                parentSpanId: checkoutRoot,
+                name: `HTTP POST ${downstream}`,
+                kind: 3,
+                startTimeUnixNano: downstreamStart,
+                endTimeUnixNano: downstreamEnd,
+                attributes: [
+                  { key: "peer.service", value: { stringValue: downstream } },
+                  { key: "rpc.service", value: { stringValue: downstream } },
+                ],
+                status: { code: 1 },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        resource: {
+          attributes: [{ key: "service.name", value: { stringValue: downstream } }],
+        },
+        scopeSpans: [
+          {
+            scope: { name: "evolvex-loadgen", version: "1.0.0" },
+            spans: [
+              {
+                traceId,
+                spanId: downstreamRoot,
+                parentSpanId: checkoutClient,
+                name: "POST /checkout",
+                kind: 2,
+                startTimeUnixNano: downstreamStart,
+                endTimeUnixNano: downstreamEnd,
+                attributes: [{ key: "http.route", value: { stringValue: "/checkout" } }],
+                status: { code: 1 },
+              },
+            ],
+          },
+        ],
+      },
+    );
+  }
+
+  return postOtlp("traces", config, { resourceSpans });
 }
 
 export async function ingestMetrics(config: OtlpIngestConfig, serviceName: string, increment: number) {

@@ -75,7 +75,10 @@ export function logsToEvidence(
       kind: "LOG" as const,
       title: log.severityText ? `${log.severityText} log` : "Error log",
       detail: (log.body ?? "").slice(0, 280) || "Error log entry from SigNoz",
-      occurredAt: log.timestamp || new Date().toISOString(),
+      occurredAt:
+        log.timestamp && !Number.isNaN(new Date(log.timestamp).getTime())
+          ? log.timestamp
+          : new Date().toISOString(),
       source: "signoz-logs",
     }));
 }
@@ -101,7 +104,9 @@ export function tracesToEvidence(
     ]
       .filter(Boolean)
       .join(" · "),
-    occurredAt: trace.timestamp || new Date().toISOString(),
+    occurredAt: trace.timestamp && !Number.isNaN(new Date(trace.timestamp).getTime())
+      ? trace.timestamp
+      : new Date().toISOString(),
     source: "signoz",
   }));
 }

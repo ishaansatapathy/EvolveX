@@ -74,6 +74,7 @@ import {
   buildPersistedSummary,
   buildServiceGraphFromSignoz,
   clearDerivedInvestigationRows,
+  coerceValidDate,
   insertTimelineEntry,
   persistChangeEvent,
   persistRuntimeSignalsFromTraces,
@@ -682,7 +683,7 @@ class InvestigationService {
         if (metricEvidence) {
           await insertTimelineEntry({
             investigationId,
-            occurredAt: new Date(metricEvidence.occurredAt),
+            occurredAt: coerceValidDate(metricEvidence.occurredAt),
             kind: "METRIC",
             title: metricEvidence.title,
             detail: metricEvidence.detail,
@@ -697,7 +698,7 @@ class InvestigationService {
       for (const evidence of traceEvidence.slice(0, 10)) {
         await insertTimelineEntry({
           investigationId,
-          occurredAt: new Date(evidence.occurredAt),
+          occurredAt: coerceValidDate(evidence.occurredAt),
           kind: "TRACE",
           title: evidence.title,
           detail: evidence.detail,
@@ -710,7 +711,7 @@ class InvestigationService {
       for (const evidence of logEvidence.slice(0, 6)) {
         await insertTimelineEntry({
           investigationId,
-          occurredAt: new Date(evidence.occurredAt),
+          occurredAt: coerceValidDate(evidence.occurredAt),
           kind: "LOG",
           title: evidence.title,
           detail: evidence.detail,
@@ -774,7 +775,7 @@ class InvestigationService {
           for (const evidence of ebpfEvidence) {
             await insertTimelineEntry({
               investigationId,
-              occurredAt: new Date(evidence.occurredAt),
+              occurredAt: coerceValidDate(evidence.occurredAt),
               kind: "EBPF",
               title: evidence.title,
               detail: evidence.detail,
@@ -791,7 +792,11 @@ class InvestigationService {
         traces,
         classification,
       });
-      await buildServiceGraphFromSignoz(service);
+      await buildServiceGraphFromSignoz(service, {
+        organizationId: row.organizationId,
+        startMs,
+        endMs,
+      });
 
       const summaryText = buildPersistedSummary(context);
 

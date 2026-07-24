@@ -4,7 +4,7 @@ import {
   loadGeneratorConfigFromEnv,
   SignozLoadGenerator,
 } from "../packages/services/signoz/load-generator.ts";
-import { ingestLogs, ingestMetrics, ingestTraces } from "../packages/services/signoz/otel-ingest.ts";
+import { ingestLogs, ingestMetrics, ingestTraces, ingestCrossServiceCheckoutTraces } from "../packages/services/signoz/otel-ingest.ts";
 import { getDefaultServiceName } from "../packages/services/signoz-env.ts";
 
 function parseArgs() {
@@ -42,7 +42,13 @@ async function runOnce(mode: "baseline" | "spike" | "p99") {
       tailLatencyCount: 3,
       tailLatencyMs: Number.parseInt(process.env.SIGNOZ_LOAD_SPIKE_TAIL_MS ?? "4800", 10),
     });
+    await ingestCrossServiceCheckoutTraces(config, {
+      downstreamService: serviceName,
+      count: 4,
+      tailLatencyMs: Number.parseInt(process.env.SIGNOZ_LOAD_SPIKE_TAIL_MS ?? "4800", 10),
+    });
     console.log(`Tail latency batch sent for ${serviceName} (many ~100ms + few ~4.8s requests).`);
+    console.log("Cross-service checkout-api → payments-svc traces sent for dependency graph / RCA.");
     console.log("SigNoz computes p95/p99 from these traces — configure a p99 latency alert in SigNoz to trigger Evolvex.");
     return;
   }
@@ -55,8 +61,10 @@ async function runOnce(mode: "baseline" | "spike" | "p99") {
       tailLatencyCount: 2,
       tailLatencyMs: 4800,
     });
+    await ingestCrossServiceCheckoutTraces(config, { downstreamService: serviceName, count: 3, tailLatencyMs: 4800 });
     await ingestMetrics(config, serviceName, 12);
     console.log(`Spike sent for ${serviceName} (errors + tail latency + signoz_calls_total)`);
+    console.log("Cross-service checkout-api traces included.");
     return;
   }
 

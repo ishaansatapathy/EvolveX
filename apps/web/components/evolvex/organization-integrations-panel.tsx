@@ -94,6 +94,10 @@ export function OrganizationIntegrationsPanel({
   const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const [copiedWebhook, setCopiedWebhook] = useState(false);
   const [githubTesting, setGithubTesting] = useState(false);
+  const [githubStatus, setGithubStatus] = useState<{
+    tone: "success" | "error";
+    message: string;
+  } | null>(null);
 
   const githubWebhookUrl = `${baseUrl.replace(/\/+$/, "")}/webhooks/github`;
 
@@ -104,6 +108,8 @@ export function OrganizationIntegrationsPanel({
     }
     return map;
   }, [integrationsQuery.data]);
+
+  const githubItem = byProvider.get("github");
 
   if (!isOwner) {
     return (
@@ -122,8 +128,13 @@ export function OrganizationIntegrationsPanel({
     try {
       const result =
         provider === "signoz" ? await signozTest.refetch() : await githubTest.refetch();
-      setMessageTone(result.data?.ok ? "success" : "error");
-      setMessage(result.data?.message ?? "Connection test failed");
+      const tone = result.data?.ok ? "success" : "error";
+      const text = result.data?.message ?? "Connection test failed";
+      setMessageTone(tone);
+      setMessage(text);
+      if (provider === "github") {
+        setGithubStatus({ tone, message: text });
+      }
     } finally {
       if (provider === "github") setGithubTesting(false);
     }
@@ -243,8 +254,19 @@ export function OrganizationIntegrationsPanel({
         <article className="evx-dash__settings-card evx-dash__github-integration-card">
           <div className="evx-dash__org-integration-head">
             <p className="evx-dash__settings-label">{PROVIDER_LABELS.github}</p>
-            {renderSourceBadge(byProvider.get("github"))}
+            {renderSourceBadge(githubItem)}
           </div>
+          {githubItem?.source === "organization" ? (
+            <p className="evx-dash__stat-note evx-dash__github-saved-note">
+              Token saved in workspace vault
+              {githubItem.maskedSecrets.token ? ` (${githubItem.maskedSecrets.token})` : ""}.
+            </p>
+          ) : null}
+          {githubStatus ? (
+            <p className={`evx-dash__integration-message evx-dash__integration-message--${githubStatus.tone}`}>
+              {githubStatus.message}
+            </p>
+          ) : null}
           <p className="evx-dash__stat-note" style={{ marginBottom: "0.65rem" }}>
             No OAuth — paste a personal access token (PAT). Enables pinpoint file fetch, deploy diff correlation, and
             suggest-fix context.
@@ -318,6 +340,7 @@ export function OrganizationIntegrationsPanel({
                     webhookSecret: githubForm.webhookSecret || undefined,
                   });
                   setGithubForm((prev) => ({ ...prev, token: "" }));
+                  setGithubStatus(null);
                   notify("GitHub credentials saved to workspace vault.");
                 } catch (error) {
                   notify(error instanceof Error ? error.message : "Failed to save GitHub credentials", "error");

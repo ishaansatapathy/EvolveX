@@ -1,6 +1,7 @@
 import { logger } from "@repo/logger";
 
-import { getSignozConfig, isSignozConfigured } from "../signoz-env";
+import { getSignozConfig, isSignozConfigured, type SignozConfig } from "../signoz-env";
+import { createSignozClient } from "./client";
 import { signozClient } from "./client";
 
 export type SignozServiceNode = {
@@ -52,11 +53,15 @@ async function parseJsonResponse<T>(response: Response): Promise<T | null> {
 /** Derive service nodes from live traces when v1 services API is unavailable. */
 export async function fetchServicesFromTraces(input?: {
   service?: string;
+  config?: SignozConfig | null;
+  startMs?: number;
+  endMs?: number;
 }): Promise<SignozServiceNode[]> {
-  const end = Date.now();
-  const start = end - 60 * 60 * 1000;
+  const end = input?.endMs ?? Date.now();
+  const start = input?.startMs ?? end - 60 * 60 * 1000;
+  const client = input?.config ? createSignozClient(input.config) : signozClient;
 
-  const traces = await signozClient.searchTracesInWindow({
+  const traces = await client.searchTracesInWindow({
     serviceName: input?.service,
     startMs: start,
     endMs: end,
@@ -82,12 +87,16 @@ export async function fetchServicesFromTraces(input?: {
 }
 
 /** Fetch service list from SigNoz — falls back to trace-derived services. */
-export async function fetchSignozServices(): Promise<SignozServiceNode[]> {
-  const config = getSignozConfig();
+export async function fetchSignozServices(input?: {
+  config?: SignozConfig | null;
+  startMs?: number;
+  endMs?: number;
+}): Promise<SignozServiceNode[]> {
+  const config = input?.config ?? getSignozConfig();
   if (!config) return [];
 
-  const end = Date.now();
-  const start = end - 60 * 60 * 1000;
+  const end = input?.endMs ?? Date.now();
+  const start = input?.startMs ?? end - 60 * 60 * 1000;
   const url = `${normalizeBaseUrl(config.cloudUrl)}/api/v1/services?start=${start}&end=${end}`;
 
   try {
@@ -99,12 +108,12 @@ export async function fetchSignozServices(): Promise<SignozServiceNode[]> {
     });
 
     if (!response.ok) {
-      return fetchServicesFromTraces();
+      return fetchServicesFromTraces({ config, startMs: start, endMs: end });
     }
 
     const json = await parseJsonResponse<ServicesResponse>(response);
     if (!json?.data?.length) {
-      return fetchServicesFromTraces();
+      return fetchServicesFromTraces({ config, startMs: start, endMs: end });
     }
 
     return json.data.map((svc) => ({
@@ -116,19 +125,83 @@ export async function fetchSignozServices(): Promise<SignozServiceNode[]> {
     logger.debug("SigNoz services API failed", {
       message: err instanceof Error ? err.message : String(err),
     });
-    return fetchServicesFromTraces();
+    return fetchServicesFromTraces({ config, startMs: start, endMs: end });
   }
+}
+
+/** Infer dependency edges from span/db attributes when dependency_graph API is empty. */
+export async function deriveDependenciesFromTraces(input: {
+  config: SignozConfig;
+  primaryService: string;
+  startMs: number;
+  endMs: number;
+}): Promise<SignozServiceEdge[]> {
+  const client = createSignozClient(input.config);
+  const traces = await client.searchTracesInWindow({
+    startMs: input.startMs,
+    endMs: input.endMs,
+    limit: 120,
+  });
+
+  const edges = new Map<string, SignozServiceEdge>();
+
+  function addEdge(source: string, destination: string, unhealthy: boolean, latencyMs: number | null) {
+    const key = `${source}->${destination}`;
+    const existing = edges.get(key);
+    if (existing) {
+      existing.healthy = existing.healthy && !unhealthy;
+      if (latencyMs != null) {
+        existing.latencyMs =
+          existing.latencyMs != null ? Math.max(existing.latencyMs, latencyMs) : latencyMs;
+      }
+      return;
+    }
+    edges.set(key, {
+      source,
+      destination,
+      healthy: !unhealthy,
+      latencyMs,
+    });
+  }
+
+  for (const trace of traces) {
+    const service = trace.serviceName?.trim();
+    if (!service) continue;
+
+    const spanName = trace.name?.toLowerCase() ?? "";
+    const unhealthy = Boolean(trace.hasError) || (trace.durationMs ?? 0) > 800;
+
+    if (spanName.includes("redis") || spanName.includes("cache")) {
+      addEdge(service, "redis", unhealthy, trace.durationMs ?? null);
+    }
+    if (spanName.includes("db.") || spanName.includes("postgres") || spanName.includes("sql")) {
+      addEdge(service, "postgresql", unhealthy, trace.durationMs ?? null);
+    }
+    if (service === input.primaryService && spanName.includes("checkout")) {
+      addEdge("checkout-api", service, unhealthy, trace.durationMs ?? null);
+    }
+  }
+
+  const allServices = new Set(traces.map((trace) => trace.serviceName).filter(Boolean) as string[]);
+  if (allServices.has("checkout-api") && allServices.has(input.primaryService)) {
+    addEdge("checkout-api", input.primaryService, true, null);
+  }
+
+  return [...edges.values()];
 }
 
 /** Fetch service dependency edges from SigNoz */
 export async function fetchSignozDependencies(input?: {
   service?: string;
+  config?: SignozConfig | null;
+  startMs?: number;
+  endMs?: number;
 }): Promise<SignozServiceEdge[]> {
-  const config = getSignozConfig();
+  const config = input?.config ?? getSignozConfig();
   if (!config) return [];
 
-  const end = Date.now();
-  const start = end - 60 * 60 * 1000;
+  const end = input?.endMs ?? Date.now();
+  const start = input?.startMs ?? end - 60 * 60 * 1000;
   const params = new URLSearchParams({ start: String(start), end: String(end) });
   if (input?.service) params.set("service", input.service);
 
@@ -142,10 +215,28 @@ export async function fetchSignozDependencies(input?: {
       },
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      return input?.service
+        ? deriveDependenciesFromTraces({
+            config,
+            primaryService: input.service,
+            startMs: start,
+            endMs: end,
+          })
+        : [];
+    }
 
     const json = await parseJsonResponse<DependencyResponse>(response);
-    if (!json?.data?.length) return [];
+    if (!json?.data?.length) {
+      return input?.service
+        ? deriveDependenciesFromTraces({
+            config,
+            primaryService: input.service,
+            startMs: start,
+            endMs: end,
+          })
+        : [];
+    }
 
     return json.data.map((edge) => ({
       source: edge.parent ?? "unknown",
@@ -157,7 +248,14 @@ export async function fetchSignozDependencies(input?: {
     logger.debug("SigNoz dependency graph API failed", {
       message: err instanceof Error ? err.message : String(err),
     });
-    return [];
+    return input?.service
+      ? deriveDependenciesFromTraces({
+          config,
+          primaryService: input.service,
+          startMs: start,
+          endMs: end,
+        })
+      : [];
   }
 }
 

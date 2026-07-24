@@ -1720,6 +1720,15 @@
   grid-column: 1 / -1;
 }
 
+.evx-dash__github-saved-note {
+  margin: 0 0 0.55rem;
+  color: #b8f0c8;
+}
+
+.evx-dash__github-integration-card .evx-dash__integration-message {
+  margin: 0 0 0.65rem;
+}
+
 .evx-dash__github-setup-guide {
   margin-bottom: 0.75rem;
   font-size: 0.78rem;

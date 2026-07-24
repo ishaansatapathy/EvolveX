@@ -16,6 +16,7 @@
     "signoz:loadgen": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts",
     "signoz:spike": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts --spike",
     "signoz:p99": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts --p99",
+    "demo:incident": "dotenv -- pnpm exec tsx scripts/demo-incident.ts",
     "investigation:seed": "dotenv -- pnpm exec tsx scripts/investigation-seed.ts",
     "investigation:reassign": "dotenv -- pnpm exec tsx scripts/reassign-investigations.ts",
     "investigation:refresh": "dotenv -- pnpm exec tsx scripts/investigation-refresh.ts",
