@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { AppPageHeader } from "~/components/evolvex/app-shell";
+import { AuditLogPanel } from "~/components/evolvex/audit-log-panel";
 import { IntegrationHealthPanel } from "~/components/evolvex/integration-health-panel";
 import { useEvolvexUser } from "~/hooks/use-evolvex-user";
 import { trpc } from "~/trpc/client";
@@ -22,6 +23,7 @@ export default function SettingsPage() {
   const databaseTest = trpc.integrations.testDatabase.useQuery({}, { enabled: false });
   const githubTest = trpc.integrations.testGithub.useQuery({}, { enabled: false });
   const openAiTest = trpc.integrations.testOpenAi.useQuery({}, { enabled: false });
+  const auditQuery = trpc.audit.list.useQuery({ limit: 50 }, { enabled: user?.role === "admin" });
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
 
@@ -78,7 +80,8 @@ export default function SettingsPage() {
             {user.email}
           </p>
           <p className="evx-dash__stat-note">
-            Email verified: {user.emailVerified ? "Yes" : "No"} · 2FA: {user.twoFactorEnabled ? "On" : "Off"}
+            Email verified: {user.emailVerified ? "Yes" : "No"} · 2FA: {user.twoFactorEnabled ? "On" : "Off"} · Role:{" "}
+            {user.role}
           </p>
         </article>
 
@@ -128,6 +131,12 @@ export default function SettingsPage() {
           Could not load integration health. Check API logs.
         </p>
       )}
+
+      {user.role === "admin" ? (
+        <div style={{ marginTop: "1rem" }}>
+          <AuditLogPanel events={auditQuery.data ?? []} loading={auditQuery.isLoading} title="Workspace audit log" />
+        </div>
+      ) : null}
     </>
   );
 }

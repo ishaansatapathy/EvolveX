@@ -6,14 +6,18 @@ import { useSearchParams } from "next/navigation";
 
 import { AiConfidenceBadge } from "~/components/evolvex/ai-confidence-badge";
 import { AppPageHeader } from "~/components/evolvex/app-shell";
+import { AuditLogPanel } from "~/components/evolvex/audit-log-panel";
+import { BlastRadiusPanel } from "~/components/evolvex/blast-radius-panel";
 import { CaseStatusControls } from "~/components/evolvex/case-status-controls";
 import { EvidenceCitationMarkdown } from "~/components/evolvex/evidence-citation-markdown";
 import { IncidentNarrativePanel } from "~/components/evolvex/incident-narrative-panel";
 import { InvestigationCaseNav } from "~/components/evolvex/investigation-case-nav";
 import { InvestigationSplitPane } from "~/components/evolvex/investigation-split-pane";
+import { KnowledgeGraphPanel } from "~/components/evolvex/knowledge-graph-panel";
 import { RootCauseHypothesesPanel } from "~/components/evolvex/root-cause-hypotheses-panel";
 import { SimilarCasesPanel } from "~/components/evolvex/similar-cases-panel";
 import { StructuredEvidencePanel } from "~/components/evolvex/structured-evidence-panel";
+import { useEvolvexUser } from "~/hooks/use-evolvex-user";
 import { trpc } from "~/trpc/client";
 
 function formatRelativeTime(iso: string) {
@@ -71,6 +75,8 @@ function isUuid(value: string | null) {
 
 export default function InvestigationsPageContent() {
   const searchParams = useSearchParams();
+  const { data: user } = useEvolvexUser();
+  const isAdmin = user?.role === "admin";
   const urlInvestigationId = searchParams.get("investigation");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [caseSearchQuery, setCaseSearchQuery] = useState("");
@@ -174,6 +180,11 @@ export default function InvestigationsPageContent() {
   const similarQuery = trpc.investigations.similar.useQuery(
     { id: activeId ?? "" },
     { enabled: Boolean(activeId) && osContext?.investigation.status === "ready" },
+  );
+
+  const caseAuditQuery = trpc.audit.list.useQuery(
+    { investigationId: activeId ?? undefined, limit: 30 },
+    { enabled: Boolean(activeId) && isAdmin },
   );
 
   const timelineCitationRefById = useMemo(() => {
@@ -336,21 +347,19 @@ export default function InvestigationsPageContent() {
       <>
         <AppPageHeader kicker="⊙ ACTIVE CASE FILES" title="Investigations" />
         <section className="evx-dash__settings-card" style={{ marginTop: "1rem" }}>
-          <p className="evx-dash__settings-label">NO CASES YET</p>
-          <p className="evx-dash__settings-value">Connect SigNoz Cloud — or seed a demo case locally</p>
+          <p className="evx-dash__settings-label">NO INVESTIGATIONS</p>
+          <p className="evx-dash__settings-value">Waiting for SigNoz alert webhooks</p>
           <p className="evx-dash__stat-note" style={{ marginTop: "0.75rem" }}>
-            <strong>Fastest demo:</strong> in a new terminal run <code>pnpm investigation:seed</code>, then refresh this page.
+            Production path:
             <br />
+            1. Configure <code>SIGNOZ_WEBHOOK_SECRET</code> and expose <code>POST /webhooks/signoz</code> (see{" "}
+            <code>docs/WIRING.md</code>)
             <br />
-            <strong>Live alerts path:</strong>
+            2. Register the webhook URL in SigNoz Notification Channels
             <br />
-            1. Set <code>SIGNOZ_WEBHOOK_SECRET</code> + expose <code>POST /webhooks/signoz</code> (see <code>docs/WIRING.md</code>)
+            3. Verify integration health on <Link href="/settings">Settings</Link>
             <br />
-            2. Add webhook URL in SigNoz Notification Channels
-            <br />
-            3. Fire alert via <code>pnpm signoz:p99</code> or SigNoz UI
-            <br />
-            4. Ensure <code>INVESTIGATION_OWNER_EMAIL</code> matches your login email
+            4. Set <code>INVESTIGATION_OWNER_EMAIL</code> to your authenticated workspace email
           </p>
           <div className="evx-dash__cause-actions" style={{ marginTop: "1rem" }}>
             <button
@@ -814,6 +823,23 @@ export default function InvestigationsPageContent() {
                   <p className="evx-dash__stat-note">Pinpoint analysis will appear when the case is ready.</p>
                 )}
 
+                {osContext.blastRadius ? (
+                  <BlastRadiusPanel
+                    summary={osContext.blastRadius.summary}
+                    totalAffected={osContext.blastRadius.totalAffected}
+                    impacts={osContext.blastRadius.impacts}
+                  />
+                ) : null}
+
+                {osContext.knowledgeGraph ? (
+                  <KnowledgeGraphPanel
+                    summary={osContext.knowledgeGraph.summary}
+                    nodes={osContext.knowledgeGraph.nodes}
+                    edges={osContext.knowledgeGraph.edges}
+                    onCitationClick={scrollToTimelineEntry}
+                  />
+                ) : null}
+
                 {osContext.rootCauseHypotheses?.length ? (
                   <RootCauseHypothesesPanel
                     hypotheses={osContext.rootCauseHypotheses}
@@ -890,6 +916,13 @@ export default function InvestigationsPageContent() {
               <details className="evx-dash__case-more">
                 <summary>Notes, dependencies &amp; raw evidence</summary>
                 <div className="evx-dash__case-more-body">
+                  {isAdmin ? (
+                    <AuditLogPanel
+                      title="Case audit trail"
+                      events={caseAuditQuery.data ?? []}
+                      loading={caseAuditQuery.isLoading}
+                    />
+                  ) : null}
                   <section className="evx-dash__context-card">
                     <p className="evx-dash__context-card-title">Engineer notes</p>
                     {notesQuery.data?.length ? (

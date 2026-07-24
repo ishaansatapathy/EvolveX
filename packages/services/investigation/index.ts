@@ -8,8 +8,6 @@ import {
   investigationTimelineEntriesTable,
   investigationsTable,
   runtimeSignalsTable,
-  serviceDependenciesTable,
-  servicesTable,
   type SelectInvestigation,
   type SelectTimelineEntry,
 } from "@repo/database/schema";
@@ -41,7 +39,11 @@ import { buildIncidentNarrative, formatIncidentNarrativeForPrompt } from "./inci
 import { buildStructuredEvidence, formatStructuredEvidenceForPrompt } from "./structured-evidence";
 import { computeInvestigationPinpoint, loadPinpointFileSnippet } from "./pinpoint";
 import { buildRootCauseHypotheses } from "./root-cause-hypotheses";
+import { computeBlastRadius } from "./blast-radius";
+import { buildInvestigationKnowledgeGraph } from "./knowledge-graph";
+import { loadServiceGraphNeighborhood } from "./service-graph";
 import { findSimilarInvestigations, listInvestigations } from "./search";
+import { recordAuditEvent } from "../audit/log";
 import { buildPostmortemFilename, buildPostmortemMarkdown } from "./postmortem-export";
 import { suggestInvestigationFix } from "./fix-suggestion";
 import { parseEbpfEvent, type EbpfEventPayload } from "../ebpf/webhook-parser";
@@ -241,58 +243,12 @@ class InvestigationService {
     ]);
 
     const primaryService = row.primaryService ?? row.affectedServices[0] ?? null;
-    const nodes: InvestigationOsContext["dependencies"]["nodes"] = [];
-    const edges: InvestigationOsContext["dependencies"]["edges"] = [];
-
-    if (primaryService) {
-      const [rootService] = await db
-        .select()
-        .from(servicesTable)
-        .where(eq(servicesTable.name, primaryService))
-        .limit(1);
-
-      if (rootService) {
-        const outgoing = await db
-          .select({
-            edgeId: serviceDependenciesTable.id,
-            edgeHealthy: serviceDependenciesTable.healthy,
-            edgeLatencyMs: serviceDependenciesTable.latencyMs,
-            destinationId: servicesTable.id,
-            destinationName: servicesTable.name,
-            destinationHealthy: servicesTable.healthy,
-            destinationLatencyMs: servicesTable.latencyMs,
-          })
-          .from(serviceDependenciesTable)
-          .innerJoin(servicesTable, eq(serviceDependenciesTable.destinationServiceId, servicesTable.id))
-          .where(eq(serviceDependenciesTable.sourceServiceId, rootService.id));
-
-        nodes.push({
-          id: rootService.id,
-          name: rootService.name,
-          healthy: rootService.healthy,
-          latencyMs: rootService.latencyMs,
-        });
-
-        for (const edge of outgoing) {
-          if (!nodes.some((node) => node.id === edge.destinationId)) {
-            nodes.push({
-              id: edge.destinationId,
-              name: edge.destinationName,
-              healthy: edge.destinationHealthy,
-              latencyMs: edge.destinationLatencyMs,
-            });
-          }
-
-          edges.push({
-            id: edge.edgeId,
-            source: rootService.name,
-            destination: edge.destinationName,
-            healthy: edge.edgeHealthy,
-            latencyMs: edge.edgeLatencyMs,
-          });
-        }
-      }
-    }
+    const graph =
+      primaryService != null
+        ? await loadServiceGraphNeighborhood(primaryService, 3)
+        : { nodes: [], edges: [] };
+    const nodes = graph.nodes;
+    const edges = graph.edges;
 
     const latestSummary = summaries[0];
     const mappedTimeline = timeline.map(toTimelineEntry);
@@ -376,6 +332,35 @@ class InvestigationService {
       primaryService: row.primaryService,
     });
 
+    const blastRadius = computeBlastRadius({
+      primaryService: row.primaryService,
+      dependencies: { nodes, edges },
+      timeline: mappedTimeline,
+      runtimeSignals: mappedRuntimeSignals,
+    });
+
+    const citationRefByTimelineId = new Map<string, string>();
+    const citationRefByEvidenceId = new Map<string, string>();
+    for (const citation of evidenceCitations.citations) {
+      if (citation.timelineEntryId && citation.ref.startsWith("T")) {
+        citationRefByTimelineId.set(citation.timelineEntryId, citation.ref);
+      }
+      if (citation.evidenceId && citation.ref.startsWith("E")) {
+        citationRefByEvidenceId.set(citation.evidenceId, citation.ref);
+      }
+    }
+
+    const knowledgeGraph = buildInvestigationKnowledgeGraph({
+      primaryService: row.primaryService,
+      alertName: row.alertName,
+      timeline: mappedTimeline,
+      evidence: mappedEvidence,
+      changeEvents: mappedChangeEvents,
+      dependencies: { edges },
+      citationRefByTimelineId,
+      citationRefByEvidenceId,
+    });
+
     return {
       investigation: {
         id: row.id,
@@ -410,6 +395,8 @@ class InvestigationService {
       evidenceCitations,
       incidentNarrative,
       rootCauseHypotheses,
+      blastRadius,
+      knowledgeGraph,
     };
   }
 
@@ -1159,6 +1146,14 @@ class InvestigationService {
 
     if (!created) return null;
 
+    await recordAuditEvent({
+      actorUserId: userId,
+      action: "investigation.note.created",
+      resourceType: "investigation",
+      resourceId: investigationId,
+      metadata: { noteId: created.id, length: trimmed.length },
+    });
+
     return {
       id: created.id,
       body: created.body,
@@ -1269,6 +1264,14 @@ class InvestigationService {
       exportedAt,
     });
 
+    await recordAuditEvent({
+      actorUserId: userId,
+      action: "investigation.postmortem.exported",
+      resourceType: "investigation",
+      resourceId: investigationId,
+      metadata: { shortId, exportedAt },
+    });
+
     return {
       markdown,
       filename: buildPostmortemFilename(shortId),
@@ -1288,7 +1291,7 @@ class InvestigationService {
 
     if (!row) return null;
 
-    return generateAndPersistInvestigationSummary({
+    const result = await generateAndPersistInvestigationSummary({
       investigationId,
       title: row.title,
       summary: row.summary ?? context.investigation.summary ?? row.title,
@@ -1316,6 +1319,18 @@ class InvestigationService {
       structuredEvidenceBlock: formatStructuredEvidenceForPrompt(context.structuredEvidence),
       incidentNarrativeBlock: formatIncidentNarrativeForPrompt(context.incidentNarrative),
     });
+
+    if (result) {
+      await recordAuditEvent({
+        actorUserId: userId,
+        action: "investigation.summary.regenerated",
+        resourceType: "investigation",
+        resourceId: investigationId,
+        metadata: { generatedAt: result.generatedAt },
+      });
+    }
+
+    return result;
   }
 
   async updateCaseStatus(
@@ -1331,11 +1346,23 @@ class InvestigationService {
 
     if (!row || !canAccessInvestigation(row, userId)) return null;
 
+    const previousStatus = row.caseStatus ?? "open";
+
     const [updated] = await db
       .update(investigationsTable)
       .set({ caseStatus, updatedAt: new Date() })
       .where(eq(investigationsTable.id, investigationId))
       .returning();
+
+    if (updated) {
+      await recordAuditEvent({
+        actorUserId: userId,
+        action: "investigation.case_status.updated",
+        resourceType: "investigation",
+        resourceId: investigationId,
+        metadata: { from: previousStatus, to: caseStatus },
+      });
+    }
 
     return updated ? toListItem(updated) : null;
   }
@@ -1401,6 +1428,14 @@ class InvestigationService {
         sortOrder: sortOrder++,
       });
     }
+
+    await recordAuditEvent({
+      actorUserId: userId,
+      action: "investigation.ebpf.triggered",
+      resourceType: "investigation",
+      resourceId: investigationId,
+      metadata: { added: ebpfEvidence.length },
+    });
 
     return {
       added: ebpfEvidence.length,

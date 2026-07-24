@@ -2453,3 +2453,98 @@
   white-space: nowrap;
   border: 0;
 }
+
+.evx-dash__blast-card,
+.evx-dash__graph-card,
+.evx-dash__audit-card {
+  margin-top: 0.75rem;
+}
+
+.evx-dash__blast-list,
+.evx-dash__audit-list,
+.evx-dash__graph-node-list,
+.evx-dash__graph-edge-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.evx-dash__blast-item {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.evx-dash__blast-item.dir-origin {
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
+.evx-dash__blast-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.evx-dash__blast-service {
+  font-weight: 600;
+  flex: 1 1 auto;
+}
+
+.evx-dash__graph-groups {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.evx-dash__graph-group-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+
+.evx-dash__graph-node {
+  display: inline;
+  font-size: 0.82rem;
+}
+
+.evx-dash__graph-node--btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.evx-dash__graph-node--btn:hover {
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+.evx-dash__audit-item {
+  padding: 0.55rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.evx-dash__audit-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.evx-dash__audit-action {
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.evx-dash__audit-at {
+  font-size: 0.72rem;
+  opacity: 0.65;
+}

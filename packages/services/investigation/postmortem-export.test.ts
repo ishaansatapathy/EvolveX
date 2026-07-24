@@ -134,6 +134,32 @@ const baseContext: InvestigationOsContext = {
       kind: "primary",
     },
   ],
+  blastRadius: {
+    summary: "1 dependent service may be affected.",
+    primaryService: "payments-svc",
+    totalAffected: 1,
+    impacts: [
+      {
+        service: "payments-svc",
+        direction: "origin",
+        impactScore: 100,
+        healthy: false,
+        latencyMs: 920,
+        evidenceCount: 1,
+        reasons: ["Alert origin service"],
+      },
+    ],
+  },
+  knowledgeGraph: {
+    summary: "4 nodes · 3 relationships",
+    nodes: [
+      { id: "service:payments-svc", kind: "service", label: "payments-svc" },
+      { id: "timeline:timeline-1", kind: "timeline", label: "Slow span", citationRef: "T1" },
+    ],
+    edges: [
+      { id: "e1", source: "timeline:timeline-1", target: "service:payments-svc", kind: "observed_on" },
+    ],
+  },
 };
 
 describe("buildPostmortemMarkdown", () => {

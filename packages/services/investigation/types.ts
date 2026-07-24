@@ -198,6 +198,42 @@ export const investigationOsContextSchema = z.object({
       kind: z.enum(["primary", "alternative"]),
     }),
   ),
+  blastRadius: z.object({
+    summary: z.string(),
+    primaryService: z.string().nullable(),
+    totalAffected: z.number(),
+    impacts: z.array(
+      z.object({
+        service: z.string(),
+        direction: z.enum(["origin", "downstream", "upstream"]),
+        impactScore: z.number(),
+        healthy: z.boolean(),
+        latencyMs: z.number().nullable(),
+        evidenceCount: z.number(),
+        reasons: z.array(z.string()),
+      }),
+    ),
+  }),
+  knowledgeGraph: z.object({
+    summary: z.string(),
+    nodes: z.array(
+      z.object({
+        id: z.string(),
+        kind: z.enum(["service", "alert", "timeline", "evidence", "change", "deploy"]),
+        label: z.string(),
+        occurredAt: z.string().optional(),
+        citationRef: z.string().nullable().optional(),
+      }),
+    ),
+    edges: z.array(
+      z.object({
+        id: z.string(),
+        source: z.string(),
+        target: z.string(),
+        kind: z.enum(["depends_on", "observed_on", "deployed_to", "correlates_with", "caused_by"]),
+      }),
+    ),
+  }),
 });
 
 export const investigationNoteSchema = z.object({
@@ -229,4 +265,6 @@ export type TimelineEntryDto = z.infer<typeof timelineEntrySchema>;
 export type EvidenceRowDto = z.infer<typeof evidenceRowSchema>;
 export type ChangeEventRowDto = z.infer<typeof changeEventRowSchema>;
 export type RuntimeSignalRowDto = z.infer<typeof runtimeSignalRowSchema>;
+export type ServiceNodeDto = z.infer<typeof serviceNodeSchema>;
+export type DependencyEdgeDto = z.infer<typeof dependencyEdgeSchema>;
 export type InvestigationOsContext = z.infer<typeof investigationOsContextSchema>;

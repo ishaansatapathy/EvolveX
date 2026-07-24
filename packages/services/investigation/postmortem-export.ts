@@ -190,6 +190,8 @@ export function buildPostmortemMarkdown(input: PostmortemExportInput): string {
     section("Structured supporting evidence", structuredBlock),
     section("Evidence completeness", completenessBlock),
     section("Change events", changeEventsBlock),
+    section("Blast radius", `${context.blastRadius.summary}\n\n${context.blastRadius.impacts.map((item) => `- **${item.service}** (${item.direction}, ${item.impactScore}%): ${item.reasons.join("; ")}`).join("\n")}`),
+    section("Knowledge graph", `${context.knowledgeGraph.summary}\n\n${context.knowledgeGraph.edges.slice(0, 20).map((edge) => `- ${edge.kind}: ${edge.source} → ${edge.target}`).join("\n")}`),
     section("Root cause hypotheses", hypothesesBlock),
     section("Likely culprit · Pinpoint", pinpointBlock),
     section("Dependency graph", dependencyBlock),

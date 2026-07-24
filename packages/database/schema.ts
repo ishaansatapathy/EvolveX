@@ -1,5 +1,6 @@
 export * from "./models/investigation";
 export * from "./models/investigation-os";
+export * from "./models/audit";
 export * from "./models/user";
 export * from "./models/queue-item";
 export * from "./models/mail-cache";

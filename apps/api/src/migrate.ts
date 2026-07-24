@@ -67,6 +67,20 @@ CREATE TABLE IF NOT EXISTS "investigation_timeline_entries" (
 CREATE INDEX IF NOT EXISTS "investigations_status_created_idx" ON "investigations" ("status", "created_at" DESC);
 CREATE INDEX IF NOT EXISTS "investigations_external_id_idx" ON "investigations" ("external_id");
 CREATE INDEX IF NOT EXISTS "investigation_timeline_investigation_idx" ON "investigation_timeline_entries" ("investigation_id", "sort_order");
+
+CREATE TABLE IF NOT EXISTS "audit_events" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "actor_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+  "action" varchar(64) NOT NULL,
+  "resource_type" varchar(64) NOT NULL,
+  "resource_id" varchar(128),
+  "metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "audit_events_created_idx" ON "audit_events" ("created_at" DESC);
+CREATE INDEX IF NOT EXISTS "audit_events_resource_idx" ON "audit_events" ("resource_type", "resource_id");
+CREATE INDEX IF NOT EXISTS "audit_events_actor_idx" ON "audit_events" ("actor_user_id", "created_at" DESC);
 `;
 
 export async function runMigrations() {
