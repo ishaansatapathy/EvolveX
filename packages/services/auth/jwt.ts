@@ -6,8 +6,23 @@ import { getClearJwtCookieOptions, getJwtCookieOptions } from "./jwt-cookie-opti
 
 import type { UserRole } from "./roles";
 
-const refreshSecret = () => env.JWT_REFRESH_SECRET ?? env.JWT_SECRET;
 const JWT_ALGORITHMS = ["HS256"] as const;
+
+function readSecret(name: "JWT_SECRET" | "JWT_REFRESH_SECRET"): string {
+  const value = env[name]?.trim() ?? process.env[name]?.trim();
+  if (!value || value.length < 16) {
+    throw new Error(`${name} is required for auth`);
+  }
+  return value;
+}
+
+function accessSecret() {
+  return readSecret("JWT_SECRET");
+}
+
+function refreshSecret() {
+  return env.JWT_REFRESH_SECRET?.trim() ?? process.env.JWT_REFRESH_SECRET?.trim() ?? accessSecret();
+}
 
 export type AccessTokenPayload = {
   userId: string;
@@ -36,7 +51,7 @@ export function issueAuthCookies(res: Response, user: AuthTokenUser) {
       emailVerified: user.emailVerified,
       role: user.role,
     } satisfies AccessTokenPayload,
-    env.JWT_SECRET,
+    accessSecret(),
     {
       expiresIn: "15m",
       algorithm: "HS256",
@@ -76,7 +91,7 @@ export function clearAuthCookies(res: Response) {
 }
 
 export function verifyAccessToken(token: string): AccessTokenPayload {
-  return jwt.verify(token, env.JWT_SECRET, { algorithms: [...JWT_ALGORITHMS] }) as AccessTokenPayload;
+  return jwt.verify(token, accessSecret(), { algorithms: [...JWT_ALGORITHMS] }) as AccessTokenPayload;
 }
 
 export function verifyRefreshToken(token: string): RefreshTokenPayload {
