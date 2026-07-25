@@ -1,0 +1,33 @@
+name: Publish Helm chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "helm/evolvex-agent/**"
+      - ".github/workflows/helm-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Package chart
+        run: helm package helm/evolvex-agent
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push chart to GHCR
+        run: helm push evolvex-agent-*.tgz "oci://ghcr.io/${{ github.repository_owner }}"

@@ -37,6 +37,41 @@ export function generateKubernetesWebhookSecret() {
   return randomBytes(24).toString("hex");
 }
 
+const DEFAULT_HELM_CHART_VERSION = "0.1.0";
+const DEFAULT_PRODUCTION_HELM_CHART_OCI = "oci://ghcr.io/ishaansatapathy/evolvex-agent";
+
+export type HelmChartReference = {
+  chart: string;
+  version?: string;
+  source: "oci" | "local";
+};
+
+/** Production defaults to GHCR OCI so users never need to clone the repo. */
+export function resolveHelmChartReference(env: NodeJS.ProcessEnv = process.env): HelmChartReference {
+  const explicitOci = env.EVOLVEX_HELM_CHART_OCI?.trim();
+  if (explicitOci) {
+    return {
+      chart: explicitOci,
+      version: env.EVOLVEX_HELM_CHART_VERSION?.trim() || DEFAULT_HELM_CHART_VERSION,
+      source: "oci",
+    };
+  }
+
+  const nodeEnv = env.NODE_ENV?.trim().toLowerCase();
+  if (nodeEnv === "production" || nodeEnv === "prod") {
+    return {
+      chart: DEFAULT_PRODUCTION_HELM_CHART_OCI,
+      version: env.EVOLVEX_HELM_CHART_VERSION?.trim() || DEFAULT_HELM_CHART_VERSION,
+      source: "oci",
+    };
+  }
+
+  return {
+    chart: env.EVOLVEX_HELM_CHART_PATH?.trim() || "./helm/evolvex-agent",
+    source: "local",
+  };
+}
+
 export function buildHelmInstallCommand(input: {
   releaseName?: string;
   namespace?: string;
@@ -46,11 +81,12 @@ export function buildHelmInstallCommand(input: {
   clusterName: string;
   signozOtlpEndpoint?: string;
   signozIngestionKey?: string;
-  chartPath?: string;
+  chart?: HelmChartReference;
 }) {
   const release = input.releaseName ?? "evolvex-agent";
   const namespace = input.namespace ?? "evolvex";
-  const chart = input.chartPath ?? "./helm/evolvex-agent";
+  const chartRef = input.chart ?? resolveHelmChartReference();
+  const versionFlag = chartRef.version ? ` --version ${chartRef.version}` : "";
   const sets = [
     `evolvex.baseUrl=${input.baseUrl}`,
     `evolvex.webhookSecret=${input.webhookSecret}`,
@@ -63,7 +99,7 @@ export function buildHelmInstallCommand(input: {
     sets.push(`signoz.ingestionKey=${input.signozIngestionKey}`);
   }
 
-  return `helm upgrade --install ${release} ${chart} --namespace ${namespace} --create-namespace ${sets.map((value) => `--set ${value}`).join(" ")}`;
+  return `helm upgrade --install ${release} ${chartRef.chart}${versionFlag} --namespace ${namespace} --create-namespace ${sets.map((value) => `--set ${value}`).join(" ")}`;
 }
 
 export function buildKubernetesOnboardingPlan(input: {
@@ -78,7 +114,7 @@ export function buildKubernetesOnboardingPlan(input: {
   const clusterName = sanitizeClusterName(input.clusterName ?? "production") || "production";
   const release = "evolvex-agent";
   const namespace = "evolvex";
-  const chartPath = "./helm/evolvex-agent";
+  const chart = resolveHelmChartReference();
 
   const helmInstallCommand = buildHelmInstallCommand({
     baseUrl,
@@ -87,8 +123,13 @@ export function buildKubernetesOnboardingPlan(input: {
     clusterName,
     signozOtlpEndpoint: input.signozOtlpEndpoint,
     signozIngestionKey: input.signozIngestionKey,
-    chartPath,
+    chart,
   });
+
+  const chartNote =
+    chart.source === "oci"
+      ? `Chart pulls from ${chart.chart} — no Evolvex repo clone required.`
+      : "Local chart path — run from the Evolvex repo root, or set EVOLVEX_HELM_CHART_OCI in production.";
 
   return {
     clusterName,
@@ -106,6 +147,7 @@ export function buildKubernetesOnboardingPlan(input: {
     ],
     notes: [
       "Run the Helm command from a machine with kubectl access to the target cluster.",
+      chartNote,
       "The chart deploys an event forwarder and OTel collector ConfigMap — not the Evolvex API itself.",
       "After install, cluster events appear on investigation timelines within one webhook delivery.",
     ],
