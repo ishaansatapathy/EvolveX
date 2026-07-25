@@ -30,8 +30,12 @@ export default function SearchPageContent() {
   const [service, setService] = useState("");
   const [alertName, setAlertName] = useState("");
   const [severity, setSeverity] = useState("");
-  const [caseStatus, setCaseStatus] = useState("");
-  const [pipelineStatus, setPipelineStatus] = useState("");
+  const [caseStatus, setCaseStatus] = useState<
+    "" | "open" | "investigating" | "monitoring" | "resolved"
+  >("");
+  const [pipelineStatus, setPipelineStatus] = useState<
+    "" | "building" | "ready" | "failed"
+  >("");
   const [timelineKind, setTimelineKind] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -72,8 +76,11 @@ export default function SearchPageContent() {
     { enabled: debouncedQuery.length === 0 },
   );
 
-  const results = debouncedQuery.length > 0 ? (searchQuery.data ?? []) : (browseQuery.data ?? []);
-  const loading = debouncedQuery.length > 0 ? searchQuery.isLoading : browseQuery.isLoading;
+  const isSearchMode = debouncedQuery.length > 0;
+  const searchResults = searchQuery.data ?? [];
+  const browseResults = browseQuery.data ?? [];
+  const resultCount = isSearchMode ? searchResults.length : browseResults.length;
+  const loading = isSearchMode ? searchQuery.isLoading : browseQuery.isLoading;
 
   return (
     <>
@@ -127,7 +134,11 @@ export default function SearchPageContent() {
           </select>
           <select
             value={caseStatus}
-            onChange={(event) => setCaseStatus(event.target.value)}
+            onChange={(event) =>
+              setCaseStatus(
+                event.target.value as "" | "open" | "investigating" | "monitoring" | "resolved",
+              )
+            }
             className="evx-dash__queue-filter-select"
             aria-label="Case status"
           >
@@ -139,7 +150,9 @@ export default function SearchPageContent() {
           </select>
           <select
             value={pipelineStatus}
-            onChange={(event) => setPipelineStatus(event.target.value)}
+            onChange={(event) =>
+              setPipelineStatus(event.target.value as "" | "building" | "ready" | "failed")
+            }
             className="evx-dash__queue-filter-select"
             aria-label="Pipeline status"
           >
@@ -189,7 +202,7 @@ export default function SearchPageContent() {
       <section className="evx-search__results">
         {loading ? (
           <p className="evx-dash__stat-note">Searching case files…</p>
-        ) : results.length === 0 ? (
+        ) : resultCount === 0 ? (
           <p className="evx-dash__stat-note">
             {debouncedQuery.length > 0 || Object.values(filterInput).some(Boolean)
               ? "No investigations match your query."
@@ -198,41 +211,55 @@ export default function SearchPageContent() {
         ) : (
           <>
             <p className="evx-dash__case-section-label">
-              {results.length} result{results.length === 1 ? "" : "s"}
+              {resultCount} result{resultCount === 1 ? "" : "s"}
             </p>
             <ol className="evx-search__result-list">
-              {results.map((item) => {
-                const searchItem = "matchSources" in item ? item : null;
-                return (
-                  <li key={item.id} className="evx-search__result">
-                    <Link href={`/investigations?investigation=${item.id}`} className="evx-search__result-link">
-                      <div className="evx-search__result-head">
-                        <span className="evx-dash__incident-id">{item.shortId}</span>
-                        <span className="evx-dash__chip">{item.caseStatus}</span>
-                        {item.severity ? <span className="evx-dash__chip">{item.severity}</span> : null}
-                        <span className="evx-dash__stat-note">{formatRelativeTime(item.createdAt)}</span>
-                      </div>
-                      <p className="evx-search__result-title">{item.title}</p>
-                      <p className="evx-dash__stat-note">
-                        {searchItem?.primaryService ?? item.affectedServices[0] ?? "unknown service"}
-                        {searchItem?.alertName ? ` · ${searchItem.alertName}` : ""}
-                      </p>
-                      {searchItem?.matchSnippet ? (
-                        <p className="evx-search__snippet">…{searchItem.matchSnippet}…</p>
-                      ) : null}
-                      {searchItem?.matchSources?.length ? (
-                        <div className="evx-search__match-sources">
-                          {searchItem.matchSources.map((source) => (
-                            <span key={source} className="evx-dash__chip evx-dash__chip--group">
-                              {MATCH_LABEL[source] ?? source}
-                            </span>
-                          ))}
+              {isSearchMode
+                ? searchResults.map((item) => (
+                    <li key={item.id} className="evx-search__result">
+                      <Link href={`/investigations?investigation=${item.id}`} className="evx-search__result-link">
+                        <div className="evx-search__result-head">
+                          <span className="evx-dash__incident-id">{item.shortId}</span>
+                          <span className="evx-dash__chip">{item.caseStatus}</span>
+                          {item.severity ? <span className="evx-dash__chip">{item.severity}</span> : null}
+                          <span className="evx-dash__stat-note">{formatRelativeTime(item.createdAt)}</span>
                         </div>
-                      ) : null}
-                    </Link>
-                  </li>
-                );
-              })}
+                        <p className="evx-search__result-title">{item.title}</p>
+                        <p className="evx-dash__stat-note">
+                          {item.primaryService ?? item.affectedServices[0] ?? "unknown service"}
+                          {item.alertName ? ` · ${item.alertName}` : ""}
+                        </p>
+                        {item.matchSnippet ? (
+                          <p className="evx-search__snippet">…{item.matchSnippet}…</p>
+                        ) : null}
+                        {item.matchSources.length ? (
+                          <div className="evx-search__match-sources">
+                            {item.matchSources.map((source) => (
+                              <span key={source} className="evx-dash__chip evx-dash__chip--group">
+                                {MATCH_LABEL[source] ?? source}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </Link>
+                    </li>
+                  ))
+                : browseResults.map((item) => (
+                    <li key={item.id} className="evx-search__result">
+                      <Link href={`/investigations?investigation=${item.id}`} className="evx-search__result-link">
+                        <div className="evx-search__result-head">
+                          <span className="evx-dash__incident-id">{item.shortId}</span>
+                          <span className="evx-dash__chip">{item.caseStatus}</span>
+                          {item.severity ? <span className="evx-dash__chip">{item.severity}</span> : null}
+                          <span className="evx-dash__stat-note">{formatRelativeTime(item.createdAt)}</span>
+                        </div>
+                        <p className="evx-search__result-title">{item.title}</p>
+                        <p className="evx-dash__stat-note">
+                          {item.affectedServices[0] ?? "unknown service"}
+                        </p>
+                      </Link>
+                    </li>
+                  ))}
             </ol>
           </>
         )}

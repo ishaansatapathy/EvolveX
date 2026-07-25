@@ -175,6 +175,7 @@ export async function captureInvestigationMemory(input: {
     detail: entry.detail,
     occurredAt: entry.occurredAt.toISOString(),
     source: entry.source,
+    sourceRef: null,
   }));
 
   const mappedChangeEvents = changeEvents.map((event) => ({
@@ -203,7 +204,7 @@ export async function captureInvestigationMemory(input: {
       recommendedNextSteps: [],
       sources: [],
     },
-    crossServiceRca: null,
+    crossServiceRca: undefined,
     citationRefByTimelineId: new Map(),
     hasPinpoint: false,
     hasDeployCorrelation: hasDeployEvidence,

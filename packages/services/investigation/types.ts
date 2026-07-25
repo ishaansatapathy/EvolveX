@@ -52,6 +52,7 @@ export const timelineEntrySchema = z.object({
   detail: z.string(),
   source: z.string().nullable().optional(),
   sourceRef: z.record(z.string(), z.unknown()).nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   sortOrder: z.number().optional(),
 });
 

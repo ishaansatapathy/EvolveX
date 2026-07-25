@@ -169,7 +169,7 @@ export function buildGithubDeployDetail(
 }
 
 function deployAlreadyAttached(
-  timelineRows: Array<{ kind: string; sourceRef: unknown; metadata: unknown }>,
+  timelineRows: Array<{ kind: string; sourceRef: unknown; metadata?: unknown }>,
   fullSha: string,
   shortSha: string,
 ) {

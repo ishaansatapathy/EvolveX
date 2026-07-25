@@ -90,8 +90,12 @@ export default function InvestigationsPageContent() {
   const [caseSearchQuery, setCaseSearchQuery] = useState("");
   const [serviceFilter, setServiceFilter] = useState("");
   const [severityFilter, setSeverityFilter] = useState("");
-  const [pipelineStatusFilter, setPipelineStatusFilter] = useState("");
-  const [caseStatusFilter, setCaseStatusFilter] = useState("");
+  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<
+    "" | "building" | "ready" | "failed"
+  >("");
+  const [caseStatusFilter, setCaseStatusFilter] = useState<
+    "" | "open" | "investigating" | "monitoring" | "resolved"
+  >("");
   const debouncedSearchQuery = useDebouncedValue(caseSearchQuery.trim(), 300);
   const debouncedServiceFilter = useDebouncedValue(serviceFilter.trim(), 300);
   const [timelineKindFilter, setTimelineKindFilter] = useState<string>("ALL");
@@ -492,7 +496,11 @@ export default function InvestigationsPageContent() {
                 </select>
                 <select
                   value={pipelineStatusFilter}
-                  onChange={(event) => setPipelineStatusFilter(event.target.value)}
+                  onChange={(event) =>
+                    setPipelineStatusFilter(
+                      event.target.value as "" | "building" | "ready" | "failed",
+                    )
+                  }
                   className="evx-dash__queue-filter-select"
                   aria-label="Filter by pipeline status"
                 >
@@ -503,7 +511,11 @@ export default function InvestigationsPageContent() {
                 </select>
                 <select
                   value={caseStatusFilter}
-                  onChange={(event) => setCaseStatusFilter(event.target.value)}
+                  onChange={(event) =>
+                    setCaseStatusFilter(
+                      event.target.value as "" | "open" | "investigating" | "monitoring" | "resolved",
+                    )
+                  }
                   className="evx-dash__queue-filter-select"
                   aria-label="Filter by case status"
                 >

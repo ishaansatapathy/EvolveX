@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { trpc } from "~/trpc/client";
 
 type IntegrationSummary = {
-  provider: "signoz" | "github" | "slack" | "pagerduty" | "jira";
+  provider: "signoz" | "github" | "slack" | "pagerduty" | "jira" | "kubernetes";
   configured: boolean;
   source: "organization" | "environment";
   config: Record<string, unknown>;
@@ -26,6 +26,7 @@ const PROVIDER_LABELS: Record<IntegrationSummary["provider"], string> = {
   slack: "Slack",
   pagerduty: "PagerDuty",
   jira: "Jira",
+  kubernetes: "Kubernetes",
 };
 
 export function OrganizationIntegrationsPanel({

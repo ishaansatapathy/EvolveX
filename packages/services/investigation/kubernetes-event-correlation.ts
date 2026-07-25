@@ -166,7 +166,7 @@ export function selectKubernetesEventTargets(
 }
 
 function k8sEventAlreadyAttached(
-  timelineRows: Array<{ kind: string; sourceRef: unknown; metadata: unknown }>,
+  timelineRows: Array<{ kind: string; sourceRef: unknown; metadata?: unknown }>,
   fingerprint: string,
 ) {
   return timelineRows.some((entry) => {

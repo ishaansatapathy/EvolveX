@@ -159,7 +159,7 @@ export function selectFeatureFlagTargets(candidates: SelectInvestigation[], even
 }
 
 function featureFlagAlreadyAttached(
-  timelineRows: Array<{ kind: string; sourceRef: unknown; metadata: unknown }>,
+  timelineRows: Array<{ kind: string; sourceRef: unknown; metadata?: unknown }>,
   fingerprint: string,
 ) {
   return timelineRows.some((entry) => {

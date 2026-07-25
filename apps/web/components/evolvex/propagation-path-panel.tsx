@@ -65,7 +65,7 @@ export function PropagationPathPanel({
                   {hop.evidenceCount > 0 ? (
                     <span className="evx-dash__chip">{hop.evidenceCount} signal(s)</span>
                   ) : null}
-                  {!hop.healthy ? <span className="evx-dash__chip evx-dash__chip--low">unhealthy</span> : null}
+                  {hop.unhealthy ? <span className="evx-dash__chip evx-dash__chip--low">unhealthy</span> : null}
                   {hop.citationRefs.map((ref) => {
                     const entryId = citationEntryIdByRef?.get(ref);
                     if (entryId && onCitationClick) {

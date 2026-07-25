@@ -162,7 +162,7 @@ export function selectEbpfEventTargets(candidates: SelectInvestigation[], event:
 }
 
 function ebpfEventAlreadyAttached(
-  timelineRows: Array<{ kind: string; sourceRef: unknown; metadata: unknown }>,
+  timelineRows: Array<{ kind: string; sourceRef: unknown; metadata?: unknown }>,
   fingerprint: string,
 ) {
   return timelineRows.some((entry) => {
@@ -222,6 +222,7 @@ export async function correlateEbpfEvent(input: {
       detail: event.detail,
       source: event.collector === "obi" ? "obi-webhook" : "ebpf-webhook",
       sourceRef: {
+        ...event.metadata,
         type: event.type,
         signalLayer: event.signalLayer,
         severity: event.severity,
@@ -230,10 +231,10 @@ export async function correlateEbpfEvent(input: {
         correlationScore: target.score,
         matchReasons: target.reasons,
         matchedBy: target.matchedBy,
-        ...event.metadata,
       },
       sortOrder: maxSort + 1,
       metadata: {
+        ...event.metadata,
         type: event.type,
         signalLayer: event.signalLayer,
         severity: event.severity,
@@ -242,7 +243,6 @@ export async function correlateEbpfEvent(input: {
         fingerprint: event.fingerprint,
         correlationScore: target.score,
         matchedBy: target.matchedBy,
-        ...event.metadata,
       },
     });
 

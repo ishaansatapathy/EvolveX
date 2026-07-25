@@ -191,7 +191,7 @@ export function selectCicdEventTargets(candidates: SelectInvestigation[], event:
 }
 
 function cicdEventAlreadyAttached(
-  timelineRows: Array<{ kind: string; source?: string | null; sourceRef: unknown; metadata: unknown }>,
+  timelineRows: Array<{ kind: string; source?: string | null; sourceRef: unknown; metadata?: unknown }>,
   fingerprint: string,
 ) {
   return timelineRows.some((entry) => {
