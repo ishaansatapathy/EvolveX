@@ -29,6 +29,12 @@ export default function SettingsPage() {
   const openAiTest = trpc.integrations.testOpenAi.useQuery({}, { enabled: false });
   const auditQuery = trpc.audit.list.useQuery({ limit: 50 }, { enabled: user?.role === "admin" });
   const organizationsQuery = trpc.organizations.list.useQuery({}, { enabled: Boolean(user) });
+  const updateOrganization = trpc.organizations.update.useMutation({
+    onSuccess: async () => {
+      await utils.organizations.list.invalidate();
+    },
+  });
+  const [workspaceName, setWorkspaceName] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
 
@@ -98,9 +104,38 @@ export default function SettingsPage() {
             {organizationsQuery.data?.[0]?.name ?? `${user.fullName}'s workspace`}
           </p>
           <p className="evx-dash__stat-note" style={{ marginTop: "0.4rem" }}>
-            Slug: {organizationsQuery.data?.[0]?.slug ?? "pending"} · Role:{" "}
-            {organizationsQuery.data?.[0]?.role ?? user.role}
+            Slug: {organizationsQuery.data?.[0]?.slug ?? "pending"} · Workspace role:{" "}
+            {organizationsQuery.data?.[0]?.role ?? "member"} · Platform role: {user.role}
           </p>
+          {isWorkspaceOwner ? (
+            <div className="evx-dash__org-field" style={{ marginTop: "0.75rem" }}>
+              <label>
+                <span className="evx-dash__stat-note">Rename workspace (#33)</span>
+                <input
+                  type="text"
+                  placeholder={workspace?.name ?? "Workspace name"}
+                  value={workspaceName || workspace?.name || ""}
+                  onChange={(event) => setWorkspaceName(event.target.value)}
+                />
+              </label>
+              <div className="evx-dash__cause-actions" style={{ marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="evx-dash__btn-ghost"
+                  disabled={!workspace?.id || updateOrganization.isPending}
+                  onClick={async () => {
+                    if (!workspace?.id) return;
+                    const name = (workspaceName || workspace.name).trim();
+                    if (!name) return;
+                    await updateOrganization.mutateAsync({ organizationId: workspace.id, name });
+                    setWorkspaceName("");
+                  }}
+                >
+                  {updateOrganization.isPending ? "Saving…" : "Save workspace name"}
+                </button>
+              </div>
+            </div>
+          ) : null}
           <p className="evx-dash__stat-note">
             Mode: {health?.productionMode ? "Production" : "Development"}
           </p>

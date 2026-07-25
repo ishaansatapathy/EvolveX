@@ -13,7 +13,7 @@ import {
   upsertSlackIntegration,
   generateKubernetesOnboarding,
 } from "@repo/services/organization/integrations";
-import { ensureUserOrganization } from "@repo/services/organization";
+import { ensureUserOrganization, updateOrganization } from "@repo/services/organization";
 
 import { mapServiceError, protectedProcedure, router } from "../../trpc";
 
@@ -50,6 +50,30 @@ export const organizationsRouter = router({
     .query(async ({ ctx }) => {
       const { listUserOrganizations } = await import("@repo/services/organization");
       return listUserOrganizations(ctx.user.id);
+    }),
+
+  update: protectedProcedure
+    .meta({ openapi: { method: "PATCH", path: "/organizations/{organizationId}", tags: TAGS } })
+    .input(
+      z.object({
+        organizationId: z.string().uuid(),
+        name: z.string().min(2).max(128),
+      }),
+    )
+    .output(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        slug: z.string(),
+        role: z.enum(["owner", "member"]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return updateOrganization(ctx.user.id, input.organizationId, { name: input.name });
+      } catch (error) {
+        mapServiceError(error);
+      }
     }),
 
   integrations: router({
@@ -99,16 +123,30 @@ export const organizationsRouter = router({
           organizationId: z.string().uuid().optional(),
           token: z.string().max(512).optional(),
           webhookSecret: z.string().max(512).optional(),
+          repositoryFullName: z.string().max(256).optional(),
+          registerWebhook: z.boolean().optional(),
         }),
       )
-      .output(z.object({ ok: z.literal(true) }))
+      .output(
+        z.object({
+          ok: z.literal(true),
+          webhookRegistration: z
+            .object({
+              ok: z.boolean(),
+              message: z.string(),
+              hookId: z.number().optional(),
+              action: z.enum(["created", "updated", "existing"]).optional(),
+            })
+            .nullable(),
+        }),
+      )
       .mutation(async ({ ctx, input }) => {
         try {
           const organization = input.organizationId
             ? { id: input.organizationId }
             : await ensureUserOrganization(ctx.user.id);
-          await upsertGithubIntegration(ctx.user.id, organization.id, input);
-          return { ok: true as const };
+          const webhookRegistration = await upsertGithubIntegration(ctx.user.id, organization.id, input);
+          return { ok: true as const, webhookRegistration };
         } catch (error) {
           mapServiceError(error);
         }

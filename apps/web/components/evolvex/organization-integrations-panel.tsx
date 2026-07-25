@@ -99,7 +99,7 @@ export function OrganizationIntegrationsPanel({
     defaultServiceName: "",
     ingestionKey: "",
   });
-  const [githubForm, setGithubForm] = useState({ token: "", webhookSecret: "" });
+  const [githubForm, setGithubForm] = useState({ token: "", webhookSecret: "", repositoryFullName: "" });
   const [slackForm, setSlackForm] = useState({ webhookUrl: "" });
   const [pagerDutyForm, setPagerDutyForm] = useState({ routingKey: "" });
   const [jiraForm, setJiraForm] = useState({
@@ -291,8 +291,8 @@ export function OrganizationIntegrationsPanel({
             </p>
           ) : null}
           <p className="evx-dash__stat-note" style={{ marginBottom: "0.65rem" }}>
-            No OAuth — paste a personal access token (PAT). Enables pinpoint file fetch, deploy diff correlation, and
-            suggest-fix context.
+            No OAuth — paste a personal access token (PAT). Optionally register the deploy webhook automatically when
+            you provide owner/repo + webhook secret.
           </p>
           <details className="evx-dash__github-setup-guide">
             <summary>How to create a GitHub PAT</summary>
@@ -312,7 +312,11 @@ export function OrganizationIntegrationsPanel({
               </li>
               <li>Paste the token below and click <strong>Save GitHub</strong>, then <strong>Test token</strong>.</li>
               <li>
-                Optional: register push webhook at <code>{githubWebhookUrl}</code> with content type{" "}
+                Optional: enter <code>owner/repo</code> below — Evolvex registers the push/deploy webhook for you
+                (#28).
+              </li>
+              <li>
+                Manual fallback: register push webhook at <code>{githubWebhookUrl}</code> with content type{" "}
                 <code>application/json</code> and the secret below.
               </li>
             </ol>
@@ -347,6 +351,28 @@ export function OrganizationIntegrationsPanel({
               autoComplete="off"
             />
           </label>
+          <label className="evx-dash__org-field">
+            <span>
+              Repository{" "}
+              {typeof githubItem?.config.repositoryFullName === "string"
+                ? `(saved: ${githubItem.config.repositoryFullName})`
+                : ""}
+            </span>
+            <input
+              type="text"
+              placeholder="owner/repo (e.g. acme/payments-api)"
+              value={
+                githubForm.repositoryFullName ||
+                (typeof githubItem?.config.repositoryFullName === "string"
+                  ? githubItem.config.repositoryFullName
+                  : "")
+              }
+              onChange={(event) =>
+                setGithubForm((prev) => ({ ...prev, repositoryFullName: event.target.value }))
+              }
+              autoComplete="off"
+            />
+          </label>
           <p className="evx-dash__stat-note evx-dash__github-webhook-url">
             Deploy webhook URL: <code>{githubWebhookUrl}</code>
           </p>
@@ -357,14 +383,19 @@ export function OrganizationIntegrationsPanel({
               disabled={upsertGithub.isPending}
               onClick={async () => {
                 try {
-                  await upsertGithub.mutateAsync({
+                  const result = await upsertGithub.mutateAsync({
                     organizationId,
                     token: githubForm.token || undefined,
                     webhookSecret: githubForm.webhookSecret || undefined,
+                    repositoryFullName: githubForm.repositoryFullName || undefined,
+                    registerWebhook: true,
                   });
                   setGithubForm((prev) => ({ ...prev, token: "" }));
                   setGithubStatus(null);
-                  notify("GitHub credentials saved to workspace vault.");
+                  const webhookNote = result.webhookRegistration?.ok
+                    ? ` ${result.webhookRegistration.message}`
+                    : "";
+                  notify(`GitHub credentials saved to workspace vault.${webhookNote}`);
                 } catch (error) {
                   notify(error instanceof Error ? error.message : "Failed to save GitHub credentials", "error");
                 }

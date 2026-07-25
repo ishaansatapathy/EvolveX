@@ -30,6 +30,8 @@ import {
 } from "../kubernetes/onboarding";
 import { isKubernetesWebhookConfigured } from "../integrations/config";
 import { recordAuditEvent } from "../audit/log";
+import { registerGithubRepositoryWebhook, type GithubWebhookRegistrationResult } from "./github-webhook-register";
+import { organizationRoleAllows } from "./permissions";
 
 export type OrganizationIntegrationSummary = {
   provider: OrganizationIntegrationProvider;
@@ -52,6 +54,8 @@ type UpsertSignozInput = {
 type UpsertGithubInput = {
   token?: string;
   webhookSecret?: string;
+  repositoryFullName?: string;
+  registerWebhook?: boolean;
 };
 
 type UpsertSlackInput = {
@@ -75,7 +79,7 @@ type UpsertKubernetesInput = {
   webhookSecret?: string;
 };
 
-async function assertOrganizationOwner(userId: string, organizationId: string) {
+async function assertOrganizationMember(userId: string, organizationId: string) {
   const [member] = await db
     .select({ role: organizationMembersTable.role })
     .from(organizationMembersTable)
@@ -87,7 +91,16 @@ async function assertOrganizationOwner(userId: string, organizationId: string) {
     )
     .limit(1);
 
-  if (!member || member.role !== "owner") {
+  if (!member) {
+    throw serviceError("FORBIDDEN", "Organization membership required");
+  }
+
+  return member;
+}
+
+async function assertOrganizationOwner(userId: string, organizationId: string) {
+  const member = await assertOrganizationMember(userId, organizationId);
+  if (member.role !== "owner") {
     throw serviceError("FORBIDDEN", "Organization owner access required to manage integrations");
   }
 }
@@ -275,7 +288,10 @@ export async function listOrganizationIntegrations(
   userId: string,
   organizationId: string,
 ): Promise<OrganizationIntegrationSummary[]> {
-  await assertOrganizationOwner(userId, organizationId);
+  const member = await assertOrganizationMember(userId, organizationId);
+  if (!organizationRoleAllows(member.role, "view_integrations")) {
+    throw serviceError("FORBIDDEN", "Insufficient permissions to view workspace integrations");
+  }
 
   const rows = await db
     .select()
@@ -345,6 +361,7 @@ export async function upsertGithubIntegration(
 
   const existing = await loadIntegrationRow(organizationId, "github");
   const existingSecrets = existing ? decryptRowSecrets(existing) : {};
+  const existingConfig = existing?.config ?? {};
   const secrets = mergeSecrets(existingSecrets, {
     token: input.token,
     webhookSecret: input.webhookSecret,
@@ -354,7 +371,41 @@ export async function upsertGithubIntegration(
     throw serviceError("BAD_REQUEST", "GitHub token is required");
   }
 
-  await saveIntegration(userId, organizationId, "github", { webhookConfigured: Boolean(secrets.webhookSecret) }, secrets, "integration.github.upsert");
+  const repositoryFullName =
+    input.repositoryFullName?.trim() ||
+    (typeof existingConfig.repositoryFullName === "string" ? existingConfig.repositoryFullName.trim() : "");
+
+  let webhookRegistration: GithubWebhookRegistrationResult | null = null;
+  const shouldRegisterWebhook = input.registerWebhook !== false;
+  if (shouldRegisterWebhook && repositoryFullName && secrets.webhookSecret) {
+    webhookRegistration = await registerGithubRepositoryWebhook({
+      token: String(secrets.token),
+      repositoryFullName,
+      webhookSecret: String(secrets.webhookSecret),
+    });
+
+    if (!webhookRegistration.ok) {
+      throw serviceError("BAD_REQUEST", webhookRegistration.message);
+    }
+  }
+
+  await saveIntegration(
+    userId,
+    organizationId,
+    "github",
+    {
+      webhookConfigured: Boolean(secrets.webhookSecret),
+      repositoryFullName: repositoryFullName || null,
+      webhookHookId: webhookRegistration?.hookId ?? existingConfig.webhookHookId ?? null,
+      webhookRegisteredAt: webhookRegistration?.ok
+        ? new Date().toISOString()
+        : (existingConfig.webhookRegisteredAt ?? null),
+    },
+    secrets,
+    "integration.github.upsert",
+  );
+
+  return webhookRegistration;
 }
 
 export async function upsertSlackIntegration(

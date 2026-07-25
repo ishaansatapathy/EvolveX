@@ -1,10 +1,12 @@
-import { eq } from "@repo/database";
+import { and, eq } from "@repo/database";
 import { db } from "@repo/database";
 import {
   organizationMembersTable,
   organizationsTable,
   usersTable,
 } from "@repo/database/schema";
+
+import { serviceError } from "../errors";
 
 export type OrganizationSummary = {
   id: string;
@@ -19,6 +21,23 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
+}
+
+async function assertOrganizationOwner(userId: string, organizationId: string) {
+  const [member] = await db
+    .select({ role: organizationMembersTable.role })
+    .from(organizationMembersTable)
+    .where(
+      and(
+        eq(organizationMembersTable.organizationId, organizationId),
+        eq(organizationMembersTable.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (!member || member.role !== "owner") {
+    throw serviceError("FORBIDDEN", "Organization owner access required");
+  }
 }
 
 /** Returns organization ids the user belongs to. */
@@ -115,3 +134,35 @@ export async function listUserOrganizations(userId: string): Promise<Organizatio
     role: row.role,
   }));
 }
+
+/** Feature #33 — rename workspace. */
+export async function updateOrganization(
+  userId: string,
+  organizationId: string,
+  input: { name: string },
+) {
+  await assertOrganizationOwner(userId, organizationId);
+
+  const name = input.name.trim();
+  if (!name) throw serviceError("BAD_REQUEST", "Workspace name is required");
+
+  const [updated] = await db
+    .update(organizationsTable)
+    .set({ name, updatedAt: new Date() })
+    .where(eq(organizationsTable.id, organizationId))
+    .returning({
+      id: organizationsTable.id,
+      name: organizationsTable.name,
+      slug: organizationsTable.slug,
+    });
+
+  if (!updated) throw serviceError("NOT_FOUND", "Workspace not found");
+
+  return {
+    ...updated,
+    role: "owner" as const,
+  };
+}
+
+export { organizationRoleAllows, organizationRoleLabel } from "./permissions";
+export { registerGithubRepositoryWebhook } from "./github-webhook-register";
