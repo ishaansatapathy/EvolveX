@@ -10,12 +10,13 @@ const shared = {
   target: "es2022" as const,
 };
 
+/** Bundle workspace + npm deps so Railway can run dist/ without pnpm node_modules resolution. */
 export default defineConfig({
   ...shared,
   entry: ["./src/index.ts", "./src/server.ts", "./src/api-bootstrap.ts"],
   format: "cjs",
   outDir: "./dist",
   clean: true,
-  noExternal: [/^@repo\//],
-  external: [],
+  noExternal: [/.*/],
+  external: ["pg-native"],
 });
