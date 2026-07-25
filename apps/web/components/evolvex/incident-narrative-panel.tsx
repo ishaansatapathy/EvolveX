@@ -58,7 +58,7 @@ export function IncidentNarrativePanel({
                       type="button"
                       className="evx-dash__citation-link"
                       onClick={() => onCitationClick(beat.timelineEntryId)}
-                      title="Jump to timeline entry"
+                      title="Highlight timeline entry"
                     >
                       [{beat.citationRef}]
                     </button>
@@ -90,7 +90,7 @@ export function IncidentNarrativePanel({
                     type="button"
                     className="evx-dash__citation-link"
                     onClick={() => onCitationClick(beat.timelineEntryId)}
-                    title="Jump to timeline entry"
+                    title="Highlight timeline entry"
                   >
                     [{beat.citationRef}]
                   </button>

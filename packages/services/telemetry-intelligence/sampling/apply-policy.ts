@@ -1,11 +1,21 @@
 import { logger } from "@repo/logger";
 
 import { getDefaultServiceName } from "../../signoz-env";
-import { ingestTraces } from "../../signoz/otel-ingest";
 import type { SamplingPolicyDecision } from "../types";
 
-/** Apply elevated sampling by emitting boosted OTLP trace batches when ingestion key is configured. */
+/** Production: sampling is enforced by collector tail_sampling — policies are pulled via HTTP. */
 export async function applySamplingPolicyBoost(policy: SamplingPolicyDecision) {
+  const isProd = process.env.NODE_ENV === "production";
+  const allowDevBoost = process.env.TI_ENABLE_OTLP_BOOST === "true";
+
+  if (isProd && !allowDevBoost) {
+    return {
+      applied: false,
+      reason:
+        "Collector tail_sampling active — agents pull /telemetry-intelligence/collector-config",
+    };
+  }
+
   if (policy.sampleRate < 0.5 || policy.mode === "normal" || policy.mode === "cooldown") {
     return { applied: false, reason: "Policy below boost threshold" };
   }
@@ -14,6 +24,8 @@ export async function applySamplingPolicyBoost(policy: SamplingPolicyDecision) {
   if (!ingestionKey) {
     return { applied: false, reason: "SIGNOZ_INGESTION_KEY not configured" };
   }
+
+  const { ingestTraces } = await import("../../signoz/otel-ingest");
 
   const fastCount = Math.round(8 + policy.sampleRate * 12);
   const tailCount = policy.mode === "incident" || policy.mode === "change_boost" ? 4 : 2;
@@ -30,13 +42,13 @@ export async function applySamplingPolicyBoost(policy: SamplingPolicyDecision) {
       },
     );
 
-    logger.info("Applied telemetry intelligence sampling boost", {
+    logger.info("Applied dev-only telemetry intelligence OTLP boost", {
       service: policy.serviceName,
       mode: policy.mode,
       sampleRate: policy.sampleRate,
     });
 
-    return { applied: true, fastCount, tailCount };
+    return { applied: true, fastCount, tailCount, devOnly: true };
   } catch (err) {
     logger.warn("Sampling boost OTLP ingest failed", {
       message: err instanceof Error ? err.message : String(err),

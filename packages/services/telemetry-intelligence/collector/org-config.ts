@@ -2,6 +2,7 @@ import { resolveSignozConfig } from "../../organization/integrations";
 import { getIntegrationBaseUrl } from "../../integrations/config";
 import { getDefaultServiceName } from "../../signoz-env";
 import { listActiveSamplingPolicies } from "../sampling/policy-store";
+import { mapSamplingPolicyRows } from "../sampling/policy-mapper";
 import { generateCollectorConfig } from "./config-generator";
 
 function resolveSignozOtlpEndpoint(cloudUrl?: string | null) {
@@ -62,7 +63,7 @@ export async function buildCollectorConfigForOrganization(input: {
     signozOtlpEndpoint,
     signozIngestionKey,
     services,
-    activePolicies: policies,
+    activePolicies: mapSamplingPolicyRows(policies),
     namespaces: namespaceRules,
     organizationId: input.organizationId,
   });

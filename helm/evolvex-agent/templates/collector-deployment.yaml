@@ -14,6 +14,35 @@ spec:
         app: evolvex-otel-collector
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
+      initContainers:
+        - name: evolvex-config-sync
+          image: curlimages/curl:8.11.1
+          env:
+            - name: EVOLVEX_COLLECTOR_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: evolvex-agent-secret
+                  key: evolvex-collector-key
+                  optional: true
+          command:
+            - sh
+            - -ec
+            - |
+              CONFIG_URL="{{ .Values.evolvex.baseUrl }}/telemetry-intelligence/collector-config?organizationId={{ .Values.evolvex.organizationId }}"
+              AUTH_HEADER=""
+              if [ -n "${EVOLVEX_COLLECTOR_KEY:-}" ]; then
+                AUTH_HEADER="Authorization: Bearer ${EVOLVEX_COLLECTOR_KEY}"
+              fi
+              if [ -n "{{ .Values.evolvex.organizationId }}" ]; then
+                curl -fsSL -H "${AUTH_HEADER}" "${CONFIG_URL}" -o /etc/otelcol-sync/otel-collector-config.yaml
+              else
+                cp /etc/otelcol-bootstrap/otel-collector-config.yaml /etc/otelcol-sync/otel-collector-config.yaml
+              fi
+          volumeMounts:
+            - name: config-sync
+              mountPath: /etc/otelcol-sync
+            - name: config-bootstrap
+              mountPath: /etc/otelcol-bootstrap
       containers:
         - name: collector
           image: {{ .Values.collector.image }}
@@ -30,12 +59,14 @@ spec:
             - containerPort: 4318
               name: otlp-http
           volumeMounts:
-            - name: config
+            - name: config-sync
               mountPath: /etc/otelcol
           resources:
             {{- toYaml .Values.resources.collector | nindent 12 }}
       volumes:
-        - name: config
+        - name: config-sync
+          emptyDir: {}
+        - name: config-bootstrap
           configMap:
             name: evolvex-collector-config
 ---

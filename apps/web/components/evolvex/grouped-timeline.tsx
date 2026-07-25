@@ -12,19 +12,16 @@ type GroupedTimelineProps = {
   entries: TimelineGroupEntry[];
   formatEventTime: (iso: string) => string;
   citationRefByEntryId?: Map<string, string>;
-  onEntryClick?: (entryId: string) => void;
 };
 
 function TimelineBeat({
   ev,
   citationRef,
-  onEntryClick,
   formatEventTime,
   compact = false,
 }: {
   ev: TimelineGroupEntry;
   citationRef?: string;
-  onEntryClick?: (entryId: string) => void;
   formatEventTime: (iso: string) => string;
   compact?: boolean;
 }) {
@@ -34,19 +31,6 @@ function TimelineBeat({
     <li
       className={`evx-dash__narrative-beat${errorLike ? " is-error" : ""}${compact ? " is-compact" : ""}`}
       data-timeline-entry-id={ev.id}
-      onClick={onEntryClick ? () => onEntryClick(ev.id) : undefined}
-      onKeyDown={
-        onEntryClick
-          ? (event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onEntryClick(ev.id);
-              }
-            }
-          : undefined
-      }
-      role={onEntryClick ? "button" : undefined}
-      tabIndex={onEntryClick ? 0 : undefined}
     >
       <div className="evx-dash__narrative-beat-head">
         <span className="evx-dash__event-at">{formatEventTime(ev.occurredAt)}</span>
@@ -67,13 +51,11 @@ function TimelineGroupBlock({
   defaultOpen,
   formatEventTime,
   citationRefByEntryId,
-  onEntryClick,
 }: {
   group: TimelineGroup;
   defaultOpen: boolean;
   formatEventTime: (iso: string) => string;
   citationRefByEntryId?: Map<string, string>;
-  onEntryClick?: (entryId: string) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const collapsible = group.entryCount > 1;
@@ -85,7 +67,6 @@ function TimelineGroupBlock({
       <TimelineBeat
         ev={entry}
         citationRef={citationRefByEntryId?.get(entry.id)}
-        onEntryClick={onEntryClick}
         formatEventTime={formatEventTime}
       />
     );
@@ -117,7 +98,6 @@ function TimelineGroupBlock({
               key={entry.id}
               ev={entry}
               citationRef={citationRefByEntryId?.get(entry.id)}
-              onEntryClick={onEntryClick}
               formatEventTime={formatEventTime}
               compact
             />
@@ -132,7 +112,6 @@ export function GroupedTimeline({
   entries,
   formatEventTime,
   citationRefByEntryId,
-  onEntryClick,
 }: GroupedTimelineProps) {
   const groups = useMemo(() => groupTimelineEntries(entries), [entries]);
 
@@ -145,7 +124,6 @@ export function GroupedTimeline({
           defaultOpen={group.highlighted || group.entryCount <= 2}
           formatEventTime={formatEventTime}
           citationRefByEntryId={citationRefByEntryId}
-          onEntryClick={onEntryClick}
         />
       ))}
     </ol>

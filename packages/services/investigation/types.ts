@@ -399,12 +399,37 @@ export const investigationOsContextSchema = z.object({
         }),
       ),
       collectorConfigHint: z.string().optional(),
+      runtimeInsights: z
+        .object({
+          enabled: z.literal(true),
+          serviceName: z.string(),
+          windowMinutes: z.number(),
+          source: z.enum(["materialized_view", "native_query", "signoz_api"]),
+          materializedViewsAvailable: z.boolean(),
+          latencySummary: z
+            .object({
+              requests: z.number(),
+              errors: z.number(),
+              p99Ms: z.number().nullable(),
+            })
+            .nullable(),
+          topFailingEndpoints: z.array(
+            z.object({
+              endpoint: z.string(),
+              errorCount: z.number(),
+              p99Ms: z.number().nullable(),
+            }),
+          ),
+          queryElapsedMs: z.number().nullable(),
+        })
+        .nullable()
+        .optional(),
       clickhouseInsights: z
         .object({
           enabled: z.literal(true),
           serviceName: z.string(),
           windowMinutes: z.number(),
-          source: z.enum(["materialized_view", "native_query"]),
+          source: z.enum(["materialized_view", "native_query", "signoz_api"]),
           materializedViewsAvailable: z.boolean(),
           latencySummary: z
             .object({

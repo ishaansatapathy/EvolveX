@@ -2,6 +2,13 @@ import { logger } from "@repo/logger";
 
 import { getTelemetryIntelligenceConfig } from "../config";
 
+function readInt(name: string, fallback: number) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export type ClickHouseQueryResult = {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -25,6 +32,7 @@ export async function executeClickHouseQuery(
   }
 
   const started = Date.now();
+  const timeoutMs = readInt("SIGNOZ_CLICKHOUSE_TIMEOUT_MS", 15_000);
 
   try {
     const response = await fetch(url.toString(), {
@@ -39,11 +47,16 @@ export async function executeClickHouseQuery(
           : {}),
       },
       body: sql,
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      logger.debug("ClickHouse query failed", { status: response.status, preview: text.slice(0, 200) });
+      logger.warn("ClickHouse query failed", {
+        status: response.status,
+        preview: text.slice(0, 300),
+        elapsedMs: Date.now() - started,
+      });
       return null;
     }
 

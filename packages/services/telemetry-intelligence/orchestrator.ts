@@ -14,9 +14,14 @@ import {
 import { getDefaultServiceName } from "../signoz-env";
 import { parseGithubDeployEvent, inferServiceNameFromRepo, type GithubPushPayload } from "../github/webhook-parser";
 import { getTelemetryIntelligenceConfig } from "./config";
-import { buildClickHouseInvestigationInsights } from "./clickhouse/investigation-insights";
+import { buildInvestigationInsights } from "./clickhouse/investigation-insights";
 import { generateCollectorConfig } from "./collector/config-generator";
+import { buildCollectorConfigForOrganization } from "./collector/org-config";
 import { buildAlertEnrichment } from "./enrichment/similar-alerts";
+import {
+  buildServiceMapDeepCorrelation,
+  graphDepthFromCorrelation,
+} from "./service-map/deep-correlation";
 import { applySamplingPolicyBoost } from "./sampling/apply-policy";
 import { computeAdaptiveTailSampling } from "./sampling/adaptive-tail";
 import { computeChangeAwareSampling } from "./sampling/change-aware";
@@ -26,10 +31,6 @@ import {
   mergeSamplingPolicies,
 } from "./sampling/context-aware";
 import { listActiveSamplingPolicies, persistSamplingPolicy, recordTelemetryIntelligenceEvent } from "./sampling/policy-store";
-import {
-  buildServiceMapDeepCorrelation,
-  graphDepthFromCorrelation,
-} from "./service-map/deep-correlation";
 import type {
   ChangeEventInput,
   SignozWebhookHandler,
@@ -162,14 +163,11 @@ export class TelemetryIntelligenceOrchestrator {
       void applySamplingPolicyBoost(policy);
     }
 
-    const config = getTelemetryIntelligenceConfig();
-    const clickhouseInsights = config.clickhouseEnabled
-      ? await buildClickHouseInvestigationInsights({
-          serviceName: primaryService,
-          windowMinutes: 15,
-          endpointLimit: 5,
-        })
-      : null;
+    const runtimeInsights = await buildInvestigationInsights({
+      serviceName: primaryService,
+      windowMinutes: 15,
+      endpointLimit: 5,
+    });
 
     const intelligenceState =
       finalPolicies.some((policy) => policy.mode === "incident")
@@ -193,7 +191,8 @@ export class TelemetryIntelligenceOrchestrator {
     });
 
     const evolvexApiUrl = process.env.BASE_URL?.replace(/\/+$/, "") ?? "http://localhost:8000";
-    const collectorConfigHint = `${evolvexApiUrl}/telemetry-intelligence/collector-config`;
+    const orgQuery = input.organizationId ? `?organizationId=${input.organizationId}` : "";
+    const collectorConfigHint = `${evolvexApiUrl}/telemetry-intelligence/collector-config${orgQuery}`;
 
     return {
       version: 1,
@@ -203,7 +202,8 @@ export class TelemetryIntelligenceOrchestrator {
       serviceMapCorrelation,
       samplingPolicies: finalPolicies,
       collectorConfigHint,
-      clickhouseInsights,
+      runtimeInsights,
+      clickhouseInsights: runtimeInsights,
     };
   }
 
@@ -269,23 +269,28 @@ export class TelemetryIntelligenceOrchestrator {
     };
   }
 
-  generateCollectorConfigForOrg(input: {
+  async generateCollectorConfigForOrg(input: {
     organizationId?: string | null;
     signozOtlpEndpoint?: string;
     signozIngestionKey?: string;
   }) {
-    const evolvexApiUrl = process.env.BASE_URL?.replace(/\/+$/, "") ?? "http://localhost:8000";
-    const signozOtlpEndpoint =
-      input.signozOtlpEndpoint ??
-      process.env.SIGNOZ_OTLP_ENDPOINT ??
-      "ingest.signoz.cloud:4317";
+    if (!input.organizationId) {
+      const evolvexApiUrl = process.env.BASE_URL?.replace(/\/+$/, "") ?? "http://localhost:8000";
+      return generateCollectorConfig({
+        evolvexApiUrl,
+        signozOtlpEndpoint:
+          input.signozOtlpEndpoint ??
+          process.env.SIGNOZ_OTLP_ENDPOINT ??
+          "ingest.signoz.cloud:4317",
+        signozIngestionKey: input.signozIngestionKey ?? process.env.SIGNOZ_INGESTION_KEY,
+        activePolicies: [],
+      });
+    }
 
-    return generateCollectorConfig({
-      evolvexApiUrl,
-      signozOtlpEndpoint,
-      signozIngestionKey: input.signozIngestionKey ?? process.env.SIGNOZ_INGESTION_KEY,
-      activePolicies: [],
+    const result = await buildCollectorConfigForOrganization({
+      organizationId: input.organizationId,
     });
+    return result.yaml;
   }
 }
 

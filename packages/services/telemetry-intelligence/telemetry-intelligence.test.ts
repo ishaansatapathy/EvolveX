@@ -104,6 +104,32 @@ describe("collector config generator (#2)", () => {
 
     expect(yaml).toContain("evolvex/enrichment");
     expect(yaml).toContain("tail_sampling");
+    expect(yaml).toContain("evolvex-latency-tail");
     expect(yaml).toContain("ingest.signoz.cloud:4317");
+  });
+
+  it("renders Go evolvexattributes processor when TI_USE_GO_PROCESSOR=true", () => {
+    const previous = process.env.TI_USE_GO_PROCESSOR;
+    process.env.TI_USE_GO_PROCESSOR = "true";
+
+    const yaml = generateCollectorConfig({
+      evolvexApiUrl: "http://localhost:8000",
+      signozOtlpEndpoint: "ingest.signoz.cloud:4317",
+      activePolicies: [
+        {
+          serviceName: "payments-svc",
+          mode: "incident",
+          sampleRate: 1,
+          reason: "test",
+          triggerSource: "test",
+          expiresAt: new Date(),
+        },
+      ],
+    });
+
+    expect(yaml).toContain("evolvexattributes:");
+    expect(yaml).not.toContain("attributes/evolvex/enrichment");
+
+    process.env.TI_USE_GO_PROCESSOR = previous;
   });
 });

@@ -361,18 +361,23 @@
 
 .evx-dash__incidents {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 0.6rem;
+  min-height: 0;
 }
 
 .evx-dash__incidents-panel {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   gap: 0.65rem;
   padding: 0.85rem 0.9rem 1rem;
   background: rgba(240, 240, 235, 0.02);
   border: 1.5px dashed rgba(240, 240, 235, 0.22);
   border-radius: 10px;
+  overflow: hidden;
 }
 
 .evx-dash__incidents-panel-head {
@@ -1831,6 +1836,8 @@
 }
 
 .evx-dash__split-pane-left {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -1884,11 +1891,31 @@
 }
 
 .evx-dash__incidents--fixed {
-  position: sticky;
-  top: 0;
-  align-self: start;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
   padding-right: 0.15rem;
+}
+
+.evx-dash__incidents-panel-head,
+.evx-dash__queue-search,
+.evx-dash__queue-filters {
+  flex-shrink: 0;
+}
+
+.evx-dash__incidents-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 0.1rem;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .evx-dash__detail--scroll {
@@ -1925,6 +1952,15 @@
   }
 
   .evx-dash__incidents--fixed {
+    overflow: visible;
+    flex: none;
+  }
+
+  .evx-dash__incidents-panel {
+    overflow: visible;
+  }
+
+  .evx-dash__incidents-list {
     overflow: visible;
   }
 }
@@ -2898,20 +2934,6 @@
   stroke-width: 2.5;
 }
 
-.evx-arch__node.is-replay .evx-arch__node-box {
-  animation: evx-arch-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes evx-arch-pulse {
-  0%,
-  100% {
-    filter: drop-shadow(0 0 0 rgba(230, 255, 0, 0));
-  }
-  50% {
-    filter: drop-shadow(0 0 8px rgba(230, 255, 0, 0.55));
-  }
-}
-
 .evx-arch__legend {
   display: flex;
   flex-wrap: wrap;
@@ -3024,12 +3046,6 @@
 
 .evx-arch__timeline-link:hover {
   color: var(--evx-yellow);
-}
-
-.evx-arch__replay-banner {
-  margin-top: 0.75rem;
-  padding-top: 0.65rem;
-  border-top: 1px dashed rgba(230, 255, 0, 0.35);
 }
 
 .evx-search__panel {

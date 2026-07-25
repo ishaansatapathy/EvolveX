@@ -3,12 +3,23 @@ import { logger } from "@repo/logger";
 import InvestigationService from "@repo/services/investigation";
 import { kubernetesEventSchema, parseKubernetesEvent } from "@repo/services/kubernetes/webhook-parser";
 import { recordKubernetesClusterHeartbeat } from "@repo/services/organization/integrations";
+import { createTelemetryIntelligenceOrchestrator } from "@repo/services/telemetry-intelligence";
 import { requireKubernetesWebhookAuth } from "@repo/services/webhooks/kubernetes-auth";
 
 import { resolveInvestigationOwnerUserId } from "@repo/services/investigation/owner";
 import { resolveOrganizationForUser } from "@repo/services/organization";
 
 const investigationService = new InvestigationService();
+const telemetryIntelligence = createTelemetryIntelligenceOrchestrator((payload) =>
+  investigationService.handleSignozWebhook(payload),
+);
+
+function isKubernetesDeploySignal(event: ReturnType<typeof parseKubernetesEvent>) {
+  if (event.kind === "Deployment" || event.kind === "ReplicaSet" || event.kind === "Rollout") {
+    return true;
+  }
+  return /scaled|rollout|successful(create|delete)|pulling|started|deploy|revision/i.test(event.reason);
+}
 
 export const kubernetesWebhookRouter = express.Router();
 
@@ -39,8 +50,9 @@ kubernetesWebhookRouter.post("/", async (req, res) => {
       organizationId = await resolveOrganizationForUser(ownerUserId);
     }
 
+    const event = parseKubernetesEvent(parsed.data);
+
     if (organizationId) {
-      const event = parseKubernetesEvent(parsed.data);
       await recordKubernetesClusterHeartbeat({
         organizationId,
         metadata: {
@@ -49,6 +61,15 @@ kubernetesWebhookRouter.post("/", async (req, res) => {
           lastEventNamespace: event.namespace,
         },
       });
+
+      if (isKubernetesDeploySignal(event)) {
+        await telemetryIntelligence.handleChangeEvent({
+          serviceName: event.service,
+          changeType: "deploy",
+          sha: event.revision,
+          organizationId,
+        });
+      }
     }
 
     const result = await investigationService.handleKubernetesWebhook(parsed.data, { organizationId });

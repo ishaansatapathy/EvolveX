@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { AiConfidenceBadge } from "~/components/evolvex/ai-confidence-badge";
@@ -101,6 +101,10 @@ export default function InvestigationsPageContent() {
   const [timelineKindFilter, setTimelineKindFilter] = useState<string>("ALL");
   const [timelineSearch, setTimelineSearch] = useState("");
   const [timelineGroupedView, setTimelineGroupedView] = useState(true);
+  const [fixPreview, setFixPreview] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [exportingPostmortem, setExportingPostmortem] = useState(false);
+  const [jiraIssueUrl, setJiraIssueUrl] = useState<string | null>(null);
   const detailScrollRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
@@ -200,10 +204,6 @@ export default function InvestigationsPageContent() {
       void contextQuery.refetch();
     },
   });
-  const [fixPreview, setFixPreview] = useState<string | null>(null);
-  const [noteDraft, setNoteDraft] = useState("");
-  const [exportingPostmortem, setExportingPostmortem] = useState(false);
-  const [jiraIssueUrl, setJiraIssueUrl] = useState<string | null>(null);
 
   const jiraConfigured =
     integrationsHealthQuery.data?.integrations.some(
@@ -289,27 +289,16 @@ export default function InvestigationsPageContent() {
   }
 
   function scrollToSection(sectionId: string) {
-    if (sectionId === "case-timeline") {
-      scrollToTimeline();
-      return;
-    }
+    if (sectionId === "case-timeline") return;
     scrollWithinDetail(document.getElementById(sectionId));
   }
 
-  function scrollToTimeline() {
-    scrollWithinDetail(timelineRef.current);
-  }
-
-  function scrollToTimelineEntry(entryId: string) {
+  const highlightTimelineEntry = useCallback((entryId: string) => {
     const entry = detailScrollRef.current?.querySelector(`[data-timeline-entry-id="${entryId}"]`);
-    if (entry instanceof HTMLElement) {
-      scrollWithinDetail(entry, 48);
-      entry.classList.add("is-citation-highlight");
-      window.setTimeout(() => entry.classList.remove("is-citation-highlight"), 2200);
-      return;
-    }
-    scrollToTimeline();
-  }
+    if (!(entry instanceof HTMLElement)) return;
+    entry.classList.add("is-citation-highlight");
+    window.setTimeout(() => entry.classList.remove("is-citation-highlight"), 2200);
+  }, []);
 
   async function fetchPostmortemExport() {
     if (!activeId) return null;
@@ -526,6 +515,7 @@ export default function InvestigationsPageContent() {
                   <option value="resolved">Resolved</option>
                 </select>
               </div>
+              <div className="evx-dash__incidents-list">
               {listLoading ? (
                 <p className="evx-dash__stat-note evx-dash__queue-empty">Loading cases…</p>
               ) : investigations.length === 0 ? (
@@ -581,6 +571,7 @@ export default function InvestigationsPageContent() {
                   </button>
                 );
               })}
+              </div>
             </div>
           </div>
         }
@@ -626,9 +617,6 @@ export default function InvestigationsPageContent() {
                 />
 
                 <div className="evx-dash__case-hero-actions">
-                  <button type="button" className="evx-dash__btn-primary" onClick={scrollToTimeline}>
-                    Open timeline
-                  </button>
                   <Link href={`/logs?investigation=${activeListItem.id}&service=${primaryService}`} className="evx-dash__btn-ghost">
                     Logs
                   </Link>
@@ -688,7 +676,7 @@ export default function InvestigationsPageContent() {
                       summary={osContext.incidentNarrative.summary || summaryText}
                       beats={osContext.incidentNarrative.beats}
                       empty={osContext.incidentNarrative.empty}
-                      onCitationClick={scrollToTimelineEntry}
+                      onCitationClick={highlightTimelineEntry}
                     />
                   ) : (
                     <section className="evx-dash__cause evx-dash__cause--story">
@@ -710,12 +698,12 @@ export default function InvestigationsPageContent() {
                         <EvidenceCitationMarkdown
                           markdown={osContext.llmSummary.markdown}
                           citations={osContext.evidenceCitations.citations}
-                          onCitationClick={scrollToTimelineEntry}
+                          onCitationClick={highlightTimelineEntry}
                         />
                       </div>
                       <div className="evx-dash__cause-footer">
                         <p className="evx-dash__cause-meta">
-                          Generated {formatRelativeTime(osContext.llmSummary.generatedAt)} · click [T1]/[E1] to jump
+                          Generated {formatRelativeTime(osContext.llmSummary.generatedAt)} · click [T1]/[E1] to highlight in timeline
                         </p>
                         {osContext.investigation.status === "ready" ? (
                           <button
@@ -784,7 +772,7 @@ export default function InvestigationsPageContent() {
                     summary={osContext.incidentNarrative.summary}
                     beats={osContext.incidentNarrative.beats}
                     empty={osContext.incidentNarrative.empty}
-                    onCitationClick={scrollToTimelineEntry}
+                    onCitationClick={highlightTimelineEntry}
                   />
                 ) : null}
                 <div className="evx-dash__case-split">
@@ -860,7 +848,7 @@ export default function InvestigationsPageContent() {
                   {osContext.structuredEvidence ? (
                     <StructuredEvidencePanel
                       sections={osContext.structuredEvidence.sections}
-                      onCitationClick={scrollToTimelineEntry}
+                      onCitationClick={highlightTimelineEntry}
                     />
                   ) : null}
                 </div>
@@ -976,7 +964,7 @@ export default function InvestigationsPageContent() {
                     suspectServices={osContext.serviceMapCorrelation.suspectServices}
                     blastImpacts={osContext.blastRadius?.impacts}
                     timeline={timeline}
-                    onTimelineClick={scrollToTimelineEntry}
+                    onTimelineClick={highlightTimelineEntry}
                   />
                 ) : null}
 
@@ -984,7 +972,7 @@ export default function InvestigationsPageContent() {
                   <PropagationPathPanel
                     summary={osContext.crossServiceRca.summary}
                     paths={osContext.crossServiceRca.paths}
-                    onCitationClick={scrollToTimelineEntry}
+                    onCitationClick={highlightTimelineEntry}
                     citationEntryIdByRef={timelineCitationEntryIdByRef}
                   />
                 ) : null}
@@ -994,14 +982,14 @@ export default function InvestigationsPageContent() {
                     summary={osContext.knowledgeGraph.summary}
                     nodes={osContext.knowledgeGraph.nodes}
                     edges={osContext.knowledgeGraph.edges}
-                    onCitationClick={scrollToTimelineEntry}
+                    onCitationClick={highlightTimelineEntry}
                   />
                 ) : null}
 
                 {osContext.rootCauseHypotheses?.length ? (
                   <RootCauseHypothesesPanel
                     hypotheses={osContext.rootCauseHypotheses}
-                    onCitationClick={scrollToTimelineEntry}
+                    onCitationClick={highlightTimelineEntry}
                     citationEntryIdByRef={timelineCitationEntryIdByRef}
                   />
                 ) : null}
@@ -1010,7 +998,7 @@ export default function InvestigationsPageContent() {
                   <RemediationPlaybooksPanel
                     summary={osContext.remediationPlaybooks.summary}
                     steps={osContext.remediationPlaybooks.steps}
-                    onCitationClick={scrollToTimelineEntry}
+                    onCitationClick={highlightTimelineEntry}
                     citationEntryIdByRef={timelineCitationEntryIdByRef}
                   />
                 ) : null}
@@ -1075,7 +1063,6 @@ export default function InvestigationsPageContent() {
                         entries={filteredTimeline}
                         formatEventTime={formatEventTime}
                         citationRefByEntryId={timelineCitationRefById}
-                        onEntryClick={scrollToTimelineEntry}
                       />
                     ) : (
                     <ol className="evx-dash__narrative-beats">
@@ -1198,8 +1185,8 @@ export default function InvestigationsPageContent() {
                                 type="button"
                                 className="evx-dash__row evx-dash__row--citation"
                                 style={{ gridTemplateColumns: "72px 1fr 64px" }}
-                                onClick={() => scrollToTimelineEntry(item.timelineEntryId!)}
-                                title={`Jump to timeline ${ref ?? ""}`.trim()}
+                                onClick={() => highlightTimelineEntry(item.timelineEntryId!)}
+                                title={`Highlight in timeline ${ref ?? ""}`.trim()}
                               >
                                 {rowContent}
                               </button>

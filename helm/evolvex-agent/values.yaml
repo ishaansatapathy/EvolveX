@@ -2,6 +2,7 @@ evolvex:
   baseUrl: "http://localhost:8000"
   webhookSecret: ""
   organizationId: ""
+  collectorKey: ""
   eventForwarder:
     enabled: true
     image: alpine:3.20

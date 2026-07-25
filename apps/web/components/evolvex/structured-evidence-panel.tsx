@@ -96,7 +96,7 @@ export function StructuredEvidencePanel({ sections, onCitationClick }: Structure
                               type="button"
                               className="evx-dash__structured-citation"
                               onClick={() => onCitationClick(item.timelineEntryId!)}
-                              title="Jump to timeline entry"
+                              title="Highlight timeline entry"
                             >
                               {content}
                             </button>

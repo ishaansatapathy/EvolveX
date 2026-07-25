@@ -11,11 +11,13 @@ export type ClickHouseEndpointRow = {
   p99Ms: number | null;
 };
 
-export type ClickHouseInvestigationInsights = {
+export type InvestigationInsightSource = "materialized_view" | "native_query" | "signoz_api";
+
+export type InvestigationInsights = {
   enabled: true;
   serviceName: string;
   windowMinutes: number;
-  source: "materialized_view" | "native_query";
+  source: InvestigationInsightSource;
   materializedViewsAvailable: boolean;
   latencySummary: {
     requests: number;
@@ -96,12 +98,28 @@ LIMIT {limit:UInt32}
   );
 }
 
-/** Feature #4 + #5 — ClickHouse MV-first, native query fallback for investigations. */
+import { buildSignozApiInvestigationInsights } from "./signoz-api-insights";
+
+/** @deprecated Use InvestigationInsights */
+export type ClickHouseInvestigationInsights = InvestigationInsights;
+
+/** Feature #4 + #5 — MV → native CH → SigNoz API fallback chain. */
+export async function buildInvestigationInsights(input: {
+  serviceName: string;
+  windowMinutes?: number;
+  endpointLimit?: number;
+}): Promise<InvestigationInsights | null> {
+  const clickhouse = await buildClickHouseInvestigationInsights(input);
+  if (clickhouse) return clickhouse;
+  return buildSignozApiInvestigationInsights(input);
+}
+
+/** Feature #4 + #5 — ClickHouse MV-first, native query fallback (self-hosted SigNoz). */
 export async function buildClickHouseInvestigationInsights(input: {
   serviceName: string;
   windowMinutes?: number;
   endpointLimit?: number;
-}): Promise<ClickHouseInvestigationInsights | null> {
+}): Promise<InvestigationInsights | null> {
   const windowMinutes = input.windowMinutes ?? 15;
   const endpointLimit = input.endpointLimit ?? 5;
   const started = Date.now();

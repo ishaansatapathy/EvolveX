@@ -5,6 +5,7 @@ import { isPagerDutyConfigured } from "@repo/services/integrations/pagerduty";
 import InvestigationService from "@repo/services/investigation";
 import { startInvestigationJobWorker } from "@repo/services/investigation/worker";
 import { isSignozConfigured } from "@repo/services/signoz-env";
+import { cleanupExpiredSamplingPolicies } from "@repo/services/telemetry-intelligence";
 
 import { runMigrations } from "./migrate";
 
@@ -37,6 +38,15 @@ export async function runApiBootstrap(_opts: ApiBootstrapOptions = {}): Promise<
     logger.info("Database schema patches applied");
   } catch (err) {
     logger.error("Database migration failed", { err });
+  }
+
+  try {
+    await cleanupExpiredSamplingPolicies();
+    logger.info("Telemetry intelligence: expired sampling policies cleaned");
+  } catch (err) {
+    logger.warn("Telemetry intelligence policy cleanup failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
   }
 
   logger.info(

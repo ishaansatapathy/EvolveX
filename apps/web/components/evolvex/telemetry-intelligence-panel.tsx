@@ -2,11 +2,11 @@
 
 import { trpc } from "~/trpc/client";
 
-type ClickHouseInsightsView = {
+type RuntimeInsightsView = {
   enabled: true;
   serviceName: string;
   windowMinutes: number;
-  source: "materialized_view" | "native_query";
+  source: "materialized_view" | "native_query" | "signoz_api";
   materializedViewsAvailable: boolean;
   latencySummary: {
     requests: number;
@@ -44,8 +44,20 @@ type TelemetryIntelligenceView = {
     reason: string;
   }>;
   collectorConfigHint?: string;
-  clickhouseInsights?: ClickHouseInsightsView | null;
+  runtimeInsights?: RuntimeInsightsView | null;
+  clickhouseInsights?: RuntimeInsightsView | null;
 };
+
+function insightSourceLabel(source: RuntimeInsightsView["source"]) {
+  switch (source) {
+    case "materialized_view":
+      return "ClickHouse materialized views";
+    case "native_query":
+      return "ClickHouse native queries";
+    case "signoz_api":
+      return "SigNoz Cloud API";
+  }
+}
 
 type TelemetryIntelligencePanelProps = {
   data: TelemetryIntelligenceView;
@@ -71,11 +83,12 @@ function stateLabel(state: TelemetryIntelligenceView["intelligenceState"]) {
 
 export function TelemetryIntelligencePanel({ data, investigationId }: TelemetryIntelligencePanelProps) {
   const enrichment = data.alertEnrichment;
-  const liveClickhouseQuery = trpc.telemetryIntelligence.clickhouseForInvestigation.useQuery(
+  const liveInsightsQuery = trpc.telemetryIntelligence.insightsForInvestigation.useQuery(
     { investigationId: investigationId ?? "", windowMinutes: 15 },
     { enabled: Boolean(investigationId), staleTime: 60_000 },
   );
-  const clickhouse = liveClickhouseQuery.data ?? data.clickhouseInsights ?? null;
+  const runtimeInsights =
+    liveInsightsQuery.data ?? data.runtimeInsights ?? data.clickhouseInsights ?? null;
   const collectorUrl =
     data.collectorConfigHint ??
     (typeof window !== "undefined"
@@ -136,23 +149,25 @@ export function TelemetryIntelligencePanel({ data, investigationId }: TelemetryI
         </div>
       ) : null}
 
-      {clickhouse ? (
+      {runtimeInsights ? (
         <div className="evx-dash__ti-block">
-          <p className="evx-dash__ti-label">ClickHouse intelligence (#4 · #5)</p>
+          <p className="evx-dash__ti-label">Runtime intelligence (#4 · #5)</p>
           <p className="evx-dash__stat-note">
-            {clickhouse.serviceName} · {clickhouse.windowMinutes}m window ·{" "}
-            {clickhouse.source === "materialized_view" ? "materialized views" : "native queries"}
-            {clickhouse.queryElapsedMs != null ? ` · ${clickhouse.queryElapsedMs}ms` : ""}
+            {runtimeInsights.serviceName} · {runtimeInsights.windowMinutes}m window ·{" "}
+            {insightSourceLabel(runtimeInsights.source)}
+            {runtimeInsights.queryElapsedMs != null ? ` · ${runtimeInsights.queryElapsedMs}ms` : ""}
           </p>
-          {clickhouse.latencySummary ? (
+          {runtimeInsights.latencySummary ? (
             <p className="evx-dash__stat-note">
-              {clickhouse.latencySummary.requests} requests · {clickhouse.latencySummary.errors} errors · p99{" "}
-              {clickhouse.latencySummary.p99Ms != null ? `${Math.round(clickhouse.latencySummary.p99Ms)}ms` : "—"}
+              {runtimeInsights.latencySummary.requests} requests · {runtimeInsights.latencySummary.errors} errors · p99{" "}
+              {runtimeInsights.latencySummary.p99Ms != null
+                ? `${Math.round(runtimeInsights.latencySummary.p99Ms)}ms`
+                : "—"}
             </p>
           ) : null}
-          {clickhouse.topFailingEndpoints.length > 0 ? (
+          {runtimeInsights.topFailingEndpoints.length > 0 ? (
             <ol className="evx-dash__ti-policy-list">
-              {clickhouse.topFailingEndpoints.map((row) => (
+              {runtimeInsights.topFailingEndpoints.map((row) => (
                 <li key={row.endpoint} className="evx-dash__ti-policy">
                   <span className="evx-dash__blast-service">{row.endpoint}</span>
                   <span className="evx-dash__chip">{row.errorCount} errors</span>
@@ -163,11 +178,11 @@ export function TelemetryIntelligencePanel({ data, investigationId }: TelemetryI
               ))}
             </ol>
           ) : (
-            <p className="evx-dash__stat-note">No failing endpoints in ClickHouse window.</p>
+            <p className="evx-dash__stat-note">No failing endpoints in runtime window.</p>
           )}
         </div>
-      ) : liveClickhouseQuery.isLoading ? (
-        <p className="evx-dash__stat-note">Querying ClickHouse…</p>
+      ) : liveInsightsQuery.isLoading ? (
+        <p className="evx-dash__stat-note">Querying runtime intelligence…</p>
       ) : null}
 
       <div className="evx-dash__ti-foot">

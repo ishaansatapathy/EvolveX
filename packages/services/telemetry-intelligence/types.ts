@@ -42,6 +42,25 @@ export type ServiceMapCorrelationSnapshot = {
   propagationPaths: string[][];
 };
 
+export type InvestigationRuntimeInsights = {
+  enabled: true;
+  serviceName: string;
+  windowMinutes: number;
+  source: "materialized_view" | "native_query" | "signoz_api";
+  materializedViewsAvailable: boolean;
+  latencySummary: {
+    requests: number;
+    errors: number;
+    p99Ms: number | null;
+  } | null;
+  topFailingEndpoints: Array<{
+    endpoint: string;
+    errorCount: number;
+    p99Ms: number | null;
+  }>;
+  queryElapsedMs: number | null;
+} | null;
+
 export type TelemetryIntelligenceSnapshot = {
   version: 1;
   processedAt: string;
@@ -50,24 +69,8 @@ export type TelemetryIntelligenceSnapshot = {
   serviceMapCorrelation: ServiceMapCorrelationSnapshot | null;
   samplingPolicies: SamplingPolicyDecision[];
   collectorConfigHint: string;
-  clickhouseInsights?: {
-    enabled: true;
-    serviceName: string;
-    windowMinutes: number;
-    source: "materialized_view" | "native_query";
-    materializedViewsAvailable: boolean;
-    latencySummary: {
-      requests: number;
-      errors: number;
-      p99Ms: number | null;
-    } | null;
-    topFailingEndpoints: Array<{
-      endpoint: string;
-      errorCount: number;
-      p99Ms: number | null;
-    }>;
-    queryElapsedMs: number | null;
-  } | null;
+  runtimeInsights?: InvestigationRuntimeInsights;
+  clickhouseInsights?: InvestigationRuntimeInsights;
 };
 
 export type ChangeEventInput = {

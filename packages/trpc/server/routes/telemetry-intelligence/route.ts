@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { getTelemetryIntelligenceConfig, listActiveSamplingPolicies, buildTelemetryIntelligenceDashboard, buildClickHouseInvestigationInsights } from "@repo/services/telemetry-intelligence";
+import { getTelemetryIntelligenceConfig, listActiveSamplingPolicies, buildTelemetryIntelligenceDashboard, buildInvestigationInsights } from "@repo/services/telemetry-intelligence";
+import { isSignozConfigured } from "@repo/services/signoz-env";
 import { buildCollectorConfigForOrganization } from "@repo/services/telemetry-intelligence/collector/org-config";
 import { ensureUserOrganization } from "@repo/services/organization";
 import InvestigationService from "@repo/services/investigation";
@@ -70,7 +71,7 @@ const clickhouseInsightsSchema = z
     enabled: z.literal(true),
     serviceName: z.string(),
     windowMinutes: z.number(),
-    source: z.enum(["materialized_view", "native_query"]),
+    source: z.enum(["materialized_view", "native_query", "signoz_api"]),
     materializedViewsAvailable: z.boolean(),
     latencySummary: z
       .object({
@@ -105,6 +106,33 @@ export const telemetryIntelligenceRouter = router({
       });
     }),
 
+  insightsForInvestigation: protectedProcedure
+    .meta({
+      openapi: { method: "GET", path: "/telemetry-intelligence/investigations/{id}/insights", tags: TAGS },
+    })
+    .input(
+      z.object({
+        investigationId: z.string().uuid(),
+        windowMinutes: z.number().min(1).max(240).optional(),
+      }),
+    )
+    .output(clickhouseInsightsSchema)
+    .query(async ({ ctx, input }) => {
+      const detail = await investigationService.getById(input.investigationId, ctx.user.id);
+      if (!detail) return null;
+
+      const serviceName =
+        detail.primaryService ?? detail.affectedServices[0] ?? null;
+      if (!serviceName) return null;
+
+      return buildInvestigationInsights({
+        serviceName,
+        windowMinutes: input.windowMinutes ?? 15,
+        endpointLimit: 8,
+      });
+    }),
+
+  /** @deprecated use insightsForInvestigation */
   clickhouseForInvestigation: protectedProcedure
     .meta({
       openapi: { method: "GET", path: "/telemetry-intelligence/investigations/{id}/clickhouse", tags: TAGS },
@@ -117,9 +145,6 @@ export const telemetryIntelligenceRouter = router({
     )
     .output(clickhouseInsightsSchema)
     .query(async ({ ctx, input }) => {
-      const config = getTelemetryIntelligenceConfig();
-      if (!config.clickhouseEnabled) return null;
-
       const detail = await investigationService.getById(input.investigationId, ctx.user.id);
       if (!detail) return null;
 
@@ -127,7 +152,7 @@ export const telemetryIntelligenceRouter = router({
         detail.primaryService ?? detail.affectedServices[0] ?? null;
       if (!serviceName) return null;
 
-      return buildClickHouseInvestigationInsights({
+      return buildInvestigationInsights({
         serviceName,
         windowMinutes: input.windowMinutes ?? 15,
         endpointLimit: 8,
@@ -179,8 +204,12 @@ export const telemetryIntelligenceRouter = router({
           { id: "#1", label: "Adaptive tail sampling", status: "active" },
           { id: "#2", label: "OTel collector enrichment", status: "active" },
           { id: "#3", label: "Alert enrichment pipeline", status: "active" },
-          { id: "#4", label: "ClickHouse materialized views", status: config.clickhouseEnabled ? "active" : "optional" },
-          { id: "#5", label: "Native ClickHouse queries", status: config.clickhouseEnabled ? "active" : "optional" },
+          { id: "#4", label: "ClickHouse materialized views", status: config.clickhouseEnabled ? "active" : "self-hosted only" },
+          {
+            id: "#5",
+            label: "Runtime investigation queries",
+            status: config.clickhouseEnabled || isSignozConfigured() ? "active" : "optional",
+          },
           { id: "#6", label: "Service map deep correlation", status: "active" },
           { id: "#7", label: "Context-aware collection", status: "active" },
           { id: "#8", label: "Change-aware sampling", status: "active" },

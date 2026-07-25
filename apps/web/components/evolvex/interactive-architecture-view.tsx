@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 type ServiceMapNode = {
   service: string;
@@ -103,7 +103,6 @@ export function InteractiveArchitectureView({
 }: InteractiveArchitectureViewProps) {
   const [selectedService, setSelectedService] = useState<string | null>(primaryService);
   const [showBlastRadius, setShowBlastRadius] = useState(true);
-  const [replayIndex, setReplayIndex] = useState<number | null>(null);
 
   const nodeByService = useMemo(() => new Map(nodes.map((node) => [node.service, node])), [nodes]);
   const suspectByService = useMemo(
@@ -113,33 +112,6 @@ export function InteractiveArchitectureView({
   const blastByService = useMemo(() => new Map(blastImpacts.map((row) => [row.service, row])), [blastImpacts]);
   const positions = useMemo(() => layoutNodes(nodes), [nodes]);
   const positionByService = useMemo(() => new Map(positions.map((row) => [row.service, row])), [positions]);
-
-  const replaySteps = useMemo(() => {
-    const services = new Set(nodes.map((node) => node.service));
-    return [...timeline]
-      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
-      .filter((entry) => {
-        const blob = `${entry.title} ${entry.detail} ${entry.source ?? ""}`;
-        return [...services].some((service) => matchesService(blob, service));
-      });
-  }, [nodes, timeline]);
-
-  const replayHighlightServices = useMemo(() => {
-    if (replayIndex == null || !replaySteps[replayIndex]) return new Set<string>();
-    const entry = replaySteps[replayIndex]!;
-    const blob = `${entry.title} ${entry.detail} ${entry.source ?? ""}`;
-    return new Set(nodes.filter((node) => matchesService(blob, node.service)).map((node) => node.service));
-  }, [nodes, replayIndex, replaySteps]);
-
-  useEffect(() => {
-    if (replayIndex == null) return;
-    if (replayIndex >= replaySteps.length) {
-      setReplayIndex(null);
-      return;
-    }
-    const timer = window.setTimeout(() => setReplayIndex((current) => (current == null ? null : current + 1)), 1400);
-    return () => window.clearTimeout(timer);
-  }, [replayIndex, replaySteps.length]);
 
   const selectedNode = selectedService ? nodeByService.get(selectedService) : undefined;
   const selectedSuspect = selectedService ? suspectByService.get(selectedService) : undefined;
@@ -165,14 +137,8 @@ export function InteractiveArchitectureView({
     if (node && !node.healthy) classes.push("is-unhealthy");
     if (suspectByService.has(service)) classes.push("is-suspect");
     if (showBlastRadius && blastByService.has(service)) classes.push("is-blast");
-    if (replayHighlightServices.has(service)) classes.push("is-replay");
     if (selectedService === service) classes.push("is-selected");
     return classes.join(" ");
-  }
-
-  function startReplay() {
-    if (replaySteps.length === 0) return;
-    setReplayIndex(0);
   }
 
   return (
@@ -190,14 +156,6 @@ export function InteractiveArchitectureView({
             <input type="checkbox" checked={showBlastRadius} onChange={(e) => setShowBlastRadius(e.target.checked)} />
             Blast radius
           </label>
-          <button type="button" className="evx-dash__btn-ghost" disabled={replaySteps.length === 0} onClick={startReplay}>
-            {replayIndex != null ? `Replay ${replayIndex + 1}/${replaySteps.length}` : "▶ Replay on map"}
-          </button>
-          {replayIndex != null ? (
-            <button type="button" className="evx-dash__btn-ghost" onClick={() => setReplayIndex(null)}>
-              Stop
-            </button>
-          ) : null}
         </div>
       </div>
 
@@ -356,15 +314,6 @@ export function InteractiveArchitectureView({
             ) : (
               <p className="evx-dash__stat-note">Click a service node to inspect dependencies and incident signals.</p>
             )}
-
-            {replayIndex != null && replaySteps[replayIndex] ? (
-              <div className="evx-arch__replay-banner">
-                <p className="evx-dash__ti-label">Replay step</p>
-                <p className="evx-dash__stat-note">
-                  <strong>{replaySteps[replayIndex]!.title}</strong> — {replaySteps[replayIndex]!.detail}
-                </p>
-              </div>
-            ) : null}
           </aside>
         </div>
       )}
