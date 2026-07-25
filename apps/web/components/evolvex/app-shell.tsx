@@ -1,11 +1,13 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { useEvolvexUser } from "~/hooks/use-evolvex-user";
 import { EVOLVEX_APP_NAV } from "~/lib/evolvex-app-nav";
+import { signOutAndRedirect } from "~/lib/sign-out";
 import { trpc } from "~/trpc/client";
 
 import "~/app/(app)/app-shell.css";
@@ -51,6 +53,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { data: user, isLoading, isError } = useEvolvexUser();
   const logoutMutation = trpc.auth.logout.useMutation();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
     if (!isLoading && (isError || !user)) {
@@ -59,9 +63,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [isLoading, isError, user, router]);
 
   async function handleSignOut() {
-    await logoutMutation.mutateAsync({});
-    await utils.auth.me.invalidate();
-    router.push("/signin");
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    await signOutAndRedirect({
+      logout: () => logoutMutation.mutateAsync({}),
+      resetAuth: () => utils.auth.me.reset(),
+      queryClient,
+    });
   }
 
   if (isLoading || !user) {
@@ -99,10 +107,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <button
           type="button"
           className="evx-dash__signout"
-          onClick={handleSignOut}
-          disabled={logoutMutation.isPending}
+          onClick={() => void handleSignOut()}
+          disabled={isSigningOut || logoutMutation.isPending}
         >
-          ← Sign out
+          {isSigningOut ? "Signing out…" : "← Sign out"}
         </button>
       </aside>
 

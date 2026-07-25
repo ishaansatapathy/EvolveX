@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -13,6 +14,7 @@ import { ProductionEngineeringPanel } from "~/components/evolvex/production-engi
 import { PluginsPanel } from "~/components/evolvex/plugins-panel";
 import { SignalWebhooksPanel } from "~/components/evolvex/signal-webhooks-panel";
 import { useEvolvexUser } from "~/hooks/use-evolvex-user";
+import { signOutAndRedirect } from "~/lib/sign-out";
 import { trpc } from "~/trpc/client";
 
 async function copyText(value: string) {
@@ -24,6 +26,7 @@ export default function SettingsPage() {
   const { data: user } = useEvolvexUser();
   const logoutMutation = trpc.auth.logout.useMutation();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
   const healthQuery = trpc.integrations.health.useQuery({});
   const signozTest = trpc.integrations.testSignoz.useQuery({}, { enabled: false });
   const databaseTest = trpc.integrations.testDatabase.useQuery({}, { enabled: false });
@@ -39,11 +42,16 @@ export default function SettingsPage() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   async function handleSignOut() {
-    await logoutMutation.mutateAsync({});
-    await utils.auth.me.invalidate();
-    router.push("/signin");
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    await signOutAndRedirect({
+      logout: () => logoutMutation.mutateAsync({}),
+      resetAuth: () => utils.auth.me.reset(),
+      queryClient,
+    });
   }
 
   async function handleCopy(id: string, value: string) {
@@ -148,8 +156,13 @@ export default function SettingsPage() {
             <button type="button" className="evx-dash__btn-primary" onClick={() => router.push("/investigations")}>
               Go to Investigations →
             </button>
-            <button type="button" className="evx-dash__btn-ghost" onClick={handleSignOut} disabled={logoutMutation.isPending}>
-              Sign out
+            <button
+              type="button"
+              className="evx-dash__btn-ghost"
+              onClick={() => void handleSignOut()}
+              disabled={isSigningOut || logoutMutation.isPending}
+            >
+              {isSigningOut ? "Signing out…" : "Sign out"}
             </button>
           </div>
         </article>
