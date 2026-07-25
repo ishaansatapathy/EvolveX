@@ -20,6 +20,7 @@ short on time. For the live walkthrough script, see [DEMO.md](./DEMO.md).
 | **Alerts + Alertmanager webhooks** | `POST /webhooks/signoz` triggers automatic investigation creation on every fired alert | `apps/api` webhook route → `InvestigationService.handleSignozWebhook` |
 | **Alert-rule API (`/api/v2/rules`)** | Programmatic alert creation/history — `pnpm signoz:alert-setup`, `pnpm signoz:postmortem-pack` | `packages/services/signoz/ops-api.ts` |
 | **Notification channels API** | Verified before alert creation (same safety check the SigNoz MCP server documents) | `ops-api.ts::listNotificationChannels` |
+| **Dashboards API (`/api/v1/dashboards`)** | One-click "Create SigNoz dashboard" from any investigation — auto-builds a 3-widget (request rate, error rate, p99 latency) dashboard scoped to the case's service, or scriptable via `pnpm signoz:dashboard-setup` | `packages/services/signoz/dashboards-api.ts` |
 | **Service accounts / API keys** | `SIGNOZ_API_KEY` auth on every API call; `SIGNOZ_INGESTION_KEY` scoped separately for OTLP | `.env.example`, `signoz-env.ts` |
 | **SigNoz MCP server** | Enabled in `casting.yaml`; `.cursor/mcp.json.example` wired for both self-host and SigNoz Cloud | [docs/SIGNOZ-MCP.md](./docs/SIGNOZ-MCP.md) |
 | **Foundry (`casting.yaml`)** | One-command reproducible self-host for judges — the modern install path SigNoz recommends over the legacy install script | repo-root `casting.yaml` / `casting.yaml.lock` |
@@ -67,27 +68,36 @@ SigNoz, it's built *on* it.
 
 ## 4. Ops workflows normally reserved for the MCP server, implemented natively
 
-The SigNoz MCP server's `signoz_create_alert` and `signoz_get_alert_history` tools wrap public SigNoz REST
-endpoints (`/api/v2/rules`, `/api/v1/channels`). Evolvex ships the same workflows as first-class scripts —
-useful anywhere a Go MCP binary isn't the right shape (CI, the demo script, org onboarding):
+The SigNoz MCP server's `signoz_create_alert`, `signoz_get_alert_history`, and `signoz_create_dashboard`
+tools wrap public SigNoz REST endpoints (`/api/v2/rules`, `/api/v1/channels`, `/api/v1/dashboards`).
+Evolvex ships the same workflows as first-class scripts *and* one-click product UI — useful anywhere a Go
+MCP binary isn't the right shape (CI, the demo script, org onboarding), and immediately usable by anyone
+working an investigation without touching a terminal:
 
 ```bash
 pnpm signoz:alert-setup -- --channel slack-oncall        # creates p99-latency + error-rate alert rules
 pnpm signoz:postmortem-pack -- --service payments-svc     # alert history + evidence → markdown pack
+pnpm signoz:dashboard-setup -- --service payments-svc     # creates a service-overview dashboard
 ```
 
-See `packages/services/signoz/ops-api.ts` (unit-tested payload builder, no live SigNoz needed to verify
-schema correctness) and [docs/SIGNOZ-MCP.md](./docs/SIGNOZ-MCP.md) for the tool-to-script mapping.
+In the product, every investigation's **Export** menu has a **"Create SigNoz dashboard"** button — it
+builds a request-rate/error-rate/p99-latency dashboard scoped to the case's service via
+`POST /api/v1/dashboards` (the same route Terraform's `signoz_dashboard` resource uses), opens it in a new
+tab, and drops a timeline entry + audit log record, mirroring the existing "Create Jira issue" button.
+
+See `packages/services/signoz/ops-api.ts` and `packages/services/signoz/dashboards-api.ts` (unit-tested
+payload builders, no live SigNoz needed to verify schema correctness) and
+[docs/SIGNOZ-MCP.md](./docs/SIGNOZ-MCP.md) for the tool-to-script mapping.
 
 ## 5. What we deliberately did **not** reimplement, and why
 
 Consistent with the zero-fake-data policy, we'd rather say "we use SigNoz's version of this" than fake a
 parallel implementation:
 
-- **SigNoz UI dashboards/query builder** — used directly in the SigNoz web UI (`localhost:8080` or SigNoz
-  Cloud) for ad-hoc exploration; Evolvex's own UI is for *investigations*, not a second dashboard builder.
-  `signoz_import_dashboard` / `signoz_create_dashboard` via MCP cover judge-driven dashboard creation
-  without Evolvex needing to re-implement the Query Builder.
+- **SigNoz UI query builder (ad-hoc exploration)** — used directly in the SigNoz web UI (`localhost:8080`
+  or SigNoz Cloud) for free-form querying; Evolvex's own UI is for *investigations*, not a second query
+  builder. Dashboard *creation*, however, is wired natively (`/api/v1/dashboards`, §4 above) since it's a
+  one-shot action with a clear default shape, not an interactive exploration surface worth re-implementing.
 - **`demo-lite` sample app** — Evolvex's own `evolvex-api` (self-instrumented, real business logic) plus
   `pnpm signoz:loadgen` / `signoz:p99` / `demo:incident` serve the same "generate realistic telemetry"
   purpose, against a real product instead of a toy service.

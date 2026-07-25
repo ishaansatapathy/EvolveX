@@ -22,6 +22,7 @@
     "signoz:p99": "dotenv -- pnpm exec tsx scripts/signoz-loadgen.ts --p99",
     "signoz:alert-setup": "dotenv -- pnpm exec tsx scripts/signoz-alert-setup.ts",
     "signoz:postmortem-pack": "dotenv -- pnpm exec tsx scripts/signoz-postmortem-pack.ts",
+    "signoz:dashboard-setup": "dotenv -- pnpm exec tsx scripts/signoz-dashboard-setup.ts",
     "mcp:manifest": "pnpm exec tsx scripts/generate-mcp-manifest.ts",
     "demo:incident": "dotenv -- pnpm exec tsx scripts/demo-incident.ts",
     "investigation:seed": "dotenv -- pnpm exec tsx scripts/investigation-seed.ts",

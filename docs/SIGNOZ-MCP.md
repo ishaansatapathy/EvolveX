@@ -133,26 +133,35 @@ Full tool + resource reference: [SigNoz MCP Server docs](https://signoz.io/docs/
 
 ## Ops workflows Evolvex implements natively (MCP-equivalent, via SigNoz REST API)
 
-The MCP server's `signoz_create_alert` and alert-history tools wrap SigNoz's public
-`/api/v2/rules` API. Evolvex ships the same capability as Node scripts — useful in CI, in the demo
-script, or anywhere a Go MCP binary isn't available:
+The MCP server's `signoz_create_alert`, alert-history, and dashboard tools wrap SigNoz's public
+`/api/v2/rules`, `/api/v1/channels`, and `/api/v1/dashboards` APIs. Evolvex ships the same capability as
+Node scripts *and* first-class product UI — useful in CI, in the demo script, or anywhere a Go MCP binary
+isn't available:
 
 | Evolvex script | Mirrors MCP tool | What it does |
 |----------------|------------------|--------------|
 | `pnpm signoz:alert-setup` | `signoz_create_alert` | Verifies notification channels, then creates a p99-latency + an error-rate `threshold_rule` for the default service |
 | `pnpm signoz:postmortem-pack` | `signoz_get_alert_history` + `signoz_search_traces`/`signoz_search_logs` | Compiles alert state history + top error/slow traces + sample logs into a markdown postmortem pack |
+| `pnpm signoz:dashboard-setup` | `signoz_create_dashboard` | Creates a request-rate/error-rate/p99-latency dashboard for one service |
 
-Both use `packages/services/signoz/ops-api.ts`, which talks to the same `/api/v2/rules` and
-`/api/v1/channels` endpoints the MCP server calls — same schema (`schemaVersion: v2alpha1`,
-`threshold_rule`), same channel-verification-before-create safety check.
+`signoz:alert-setup` / `signoz:postmortem-pack` use `packages/services/signoz/ops-api.ts`, which talks to
+the same `/api/v2/rules` and `/api/v1/channels` endpoints the MCP server calls — same schema
+(`schemaVersion: v2alpha1`, `threshold_rule`), same channel-verification-before-create safety check.
+`signoz:dashboard-setup` uses `packages/services/signoz/dashboards-api.ts` against `/api/v1/dashboards`
+(the same route Terraform's `signoz_dashboard` resource and `signoz_create_dashboard` use).
 
 ```bash
 pnpm signoz:alert-setup -- --channel slack-oncall
 pnpm signoz:postmortem-pack -- --service payments-svc --window 60
+pnpm signoz:dashboard-setup -- --service payments-svc
 ```
 
 See `--help` on either script for all flags. Output of the postmortem pack lands in
 `postmortems/<timestamp>-<service>.md` (git-ignored — these are point-in-time artifacts, not source).
+
+Dashboard creation is also one click in the product: open an investigation → **Export** menu →
+**Create SigNoz dashboard**. It scopes the dashboard to the case's primary service, opens it in a new tab,
+and logs a timeline entry + audit event — no terminal needed.
 
 ## Troubleshooting
 
@@ -164,3 +173,4 @@ See `--help` on either script for all flags. Output of the postmortem pack lands
 | `signoz_create_alert` / `pnpm signoz:alert-setup` rejects with "channel not found" | Create a notification channel first: SigNoz UI → Settings → Alerts → Notification Channels |
 | Alert-rule tools return 404 | Self-hosted SigNoz must be v0.120.0+ (alert-rule CRUD) / v0.118.0+ (history) |
 | `pnpm signoz:alert-setup` fails with `403 authz_forbidden` | Confirmed against SigNoz Cloud: listing channels/rules works with any API key role, but **creating** a rule requires an Editor or Admin key. Generate one in SigNoz → Settings → API Keys. |
+| `pnpm signoz:dashboard-setup` / "Create SigNoz dashboard" fails with 403 | Same Editor+ key requirement as alert creation — creating dashboards needs Editor or Admin, not Viewer. |

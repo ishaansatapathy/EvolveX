@@ -204,10 +204,19 @@ export default function InvestigationsPageContent() {
       void contextQuery.refetch();
     },
   });
+  const createSignozDashboardMutation = trpc.investigations.createSignozDashboard.useMutation({
+    onSuccess: () => {
+      void contextQuery.refetch();
+    },
+  });
 
   const jiraConfigured =
     integrationsHealthQuery.data?.integrations.some(
       (item) => item.id === "jira" && item.authConfigured,
+    ) ?? false;
+  const signozApiConfigured =
+    integrationsHealthQuery.data?.integrations.some(
+      (item) => item.id === "signoz_api" && item.authConfigured,
     ) ?? false;
 
   const osContext = contextQuery.data;
@@ -351,6 +360,25 @@ export default function InvestigationsPageContent() {
       window.open(result.issueUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
       alert(error instanceof Error ? error.message : "Jira issue creation failed");
+    }
+  }
+
+  async function handleCreateSignozDashboard() {
+    if (!activeId) return;
+    if (!signozApiConfigured) {
+      alert("SigNoz is not configured. Set SIGNOZ_CLOUD_URL and SIGNOZ_API_KEY (or connect in Settings).");
+      return;
+    }
+
+    try {
+      const result = await createSignozDashboardMutation.mutateAsync({ id: activeId });
+      if (!result) {
+        alert("Could not create a SigNoz dashboard for this case.");
+        return;
+      }
+      window.open(result.dashboardUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "SigNoz dashboard creation failed");
     }
   }
 
@@ -655,6 +683,19 @@ export default function InvestigationsPageContent() {
                           }
                         >
                           {createJiraIssueMutation.isPending ? "Creating Jira…" : "Create Jira issue"}
+                        </button>
+                        <button
+                          type="button"
+                          className="evx-dash__btn-ghost"
+                          disabled={!signozApiConfigured || createSignozDashboardMutation.isPending}
+                          onClick={() => void handleCreateSignozDashboard()}
+                          title={
+                            signozApiConfigured
+                              ? "Create a SigNoz dashboard (request rate, error rate, p99 latency) for this case's service"
+                              : "Configure SIGNOZ_CLOUD_URL / SIGNOZ_API_KEY in Settings"
+                          }
+                        >
+                          {createSignozDashboardMutation.isPending ? "Creating dashboard…" : "Create SigNoz dashboard"}
                         </button>
                       </div>
                     </details>

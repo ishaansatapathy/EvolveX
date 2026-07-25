@@ -48,8 +48,8 @@ Run Evolvex separately (`pnpm dev` — see below). Foundry deploys **SigNoz only
 `casting.yaml` also enables SigNoz's **MCP server** (`spec.mcp.spec.enabled: true`), so any MCP client
 (Cursor, Claude, Codex) can query the same traces/logs/metrics/alerts Evolvex investigates, in plain
 English. See [docs/SIGNOZ-MCP.md](./docs/SIGNOZ-MCP.md) for connecting `.cursor/mcp.json` to it (local or
-SigNoz Cloud), and for `pnpm signoz:alert-setup` / `pnpm signoz:postmortem-pack` — Node equivalents of the
-MCP server's alert-creation and postmortem-evidence workflows.
+SigNoz Cloud), and for `pnpm signoz:alert-setup` / `pnpm signoz:postmortem-pack` / `pnpm signoz:dashboard-setup`
+— Node equivalents of the MCP server's alert-creation, postmortem-evidence, and dashboard-creation workflows.
 
 ## Local setup
 
@@ -117,6 +117,7 @@ pnpm signoz:loadgen   # Send real traces to SigNoz
 pnpm signoz:p99       # Tail latency load for p99 alerts
 pnpm signoz:alert-setup       # Create p99-latency + error-rate alert rules via SigNoz API
 pnpm signoz:postmortem-pack   # Compile a markdown postmortem from live SigNoz evidence
+pnpm signoz:dashboard-setup   # Create a service-overview dashboard via SigNoz dashboards API
 pnpm clickhouse:apply-mvs     # Apply direct-ClickHouse materialized views (self-hosted only)
 pnpm investigation:seed  # Seed a real investigation via webhook handler
 pnpm obi:up             # OBI eBPF demo (Docker Linux only) → SigNoz OTLP

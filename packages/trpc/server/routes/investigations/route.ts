@@ -452,6 +452,31 @@ export const investigationsRouter = router({
       }
     }),
 
+  createSignozDashboard: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .output(
+      z
+        .object({
+          dashboardId: z.string(),
+          dashboardUrl: z.string(),
+          title: z.string(),
+          serviceName: z.string(),
+          createdAt: z.string(),
+        })
+        .nullable(),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await investigationService.createSignozDashboard(input.id, ctx.user.id);
+        if (!result) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Investigation not found" });
+        }
+        return result;
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }),
+
   updateCaseStatus: protectedProcedure
     .input(
       z.object({
