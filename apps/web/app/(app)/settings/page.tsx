@@ -11,6 +11,7 @@ import { KubernetesOnboardingPanel } from "~/components/evolvex/kubernetes-onboa
 import { OrganizationIntegrationsPanel } from "~/components/evolvex/organization-integrations-panel";
 import { ProductionEngineeringPanel } from "~/components/evolvex/production-engineering-panel";
 import { PluginsPanel } from "~/components/evolvex/plugins-panel";
+import { SignalWebhooksPanel } from "~/components/evolvex/signal-webhooks-panel";
 import { useEvolvexUser } from "~/hooks/use-evolvex-user";
 import { trpc } from "~/trpc/client";
 
@@ -159,9 +160,12 @@ export default function SettingsPage() {
         organizationName={workspace?.name}
         isOwner={isWorkspaceOwner}
         baseUrl={health?.baseUrl}
+        slackOAuthConfigured={health?.slackOAuthConfigured ?? false}
       />
 
       <KubernetesOnboardingPanel organizationId={workspace?.id} isOwner={isWorkspaceOwner} />
+
+      <SignalWebhooksPanel organizationId={workspace?.id} isOwner={isWorkspaceOwner} />
 
       <PluginsPanel organizationId={workspace?.id} isOwner={isWorkspaceOwner} />
 

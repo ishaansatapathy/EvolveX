@@ -14,7 +14,7 @@ short on time. For the live walkthrough script, see [DEMO.md](./DEMO.md).
 |---|---|---|
 | **OTLP ingestion (traces)** | `evolvex-api` self-instruments via OTel SDK; load generator emits realistic checkout-flow spans | `packages/services/signoz/register-otel.ts`, `otel-ingest.ts` |
 | **OTLP ingestion (metrics)** | Runtime metrics (event loop, GC, heap, HTTP histograms) exported alongside traces | `register-otel.ts` — `PeriodicExportingMetricReader` |
-| **OTLP ingestion (logs)** | Demo log batches + real API logs ingested for correlation | `otel-ingest.ts` (`ingestLogs`) |
+| **OTLP ingestion (logs)** | `@repo/logger` (winston) bridged live via `BatchLogRecordProcessor`/`OTLPLogExporter`, trace-correlated — plus demo log batches for seeded scenarios | `register-otel.ts`, `otel-ingest.ts` (`ingestLogs`) |
 | **Query API v5 (Query Builder)** | Every investigation timeline, error/slow-trace search, and log search hits `/api/v5/query_range` directly | `packages/services/signoz/client.ts` |
 | **Service Map API** | Live dependency graph (cross-service RCA) — no synthetic edges | `packages/services/signoz/service-map.ts` |
 | **Alerts + Alertmanager webhooks** | `POST /webhooks/signoz` triggers automatic investigation creation on every fired alert | `apps/api` webhook route → `InvestigationService.handleSignozWebhook` |
@@ -96,7 +96,36 @@ parallel implementation:
   standardizes on for reproducibility; Swarm/SELinux are alternate infra targets, not additional product
   surface, so we didn't fork the demo across them.
 
-## 6. Everything else already shipped (the product itself)
+## 6. Self-service, production-grade onboarding (not a hackathon demo hack)
+
+Every integration in Settings → **Connect integrations** is wired the same way the SigNoz API key is:
+paste-and-save from the browser, encrypted per-workspace, zero repo cloning or redeploys. Slack goes one
+step further with real OAuth:
+
+| Integration | Self-service mechanism |
+|---|---|
+| SigNoz | Cloud URL + API key + ingestion key, pasted in Settings |
+| Slack | **"Add to Slack" OAuth** (`SLACK_CLIENT_ID`/`SECRET`) — one click, no webhook URL to find; falls back to manual paste. "Send test message" posts a real message to verify |
+| GitHub | PAT paste + automatic deploy-webhook registration via GitHub's API |
+| PagerDuty / Jira | Routing key / API token paste, with an in-browser **Test** button — PagerDuty fires a real trigger+auto-resolve event, Jira/GitHub/SigNoz hit a real read-only API call |
+| Kubernetes | Settings generates a scoped webhook secret + Helm command; panel flips to a **live "✅ Cluster connected"** status the moment your cluster's collector reports in — polled automatically, no manual refresh |
+| eBPF / Feature flags / CI-CD | Settings → **Connect signal webhooks** generates a scoped secret + ready-to-paste URL/curl example per source; live "✅ Connected" status once an event lands |
+| Foundry self-host | `pnpm signoz:local:up` / `:down` / `:logs` / `:status` — one command each, no `foundryctl` flags to remember |
+
+None of this asks a user to touch `.env` or redeploy to connect a workspace integration — only the app
+*operator* configures OAuth app credentials once (e.g. `SLACK_CLIENT_ID`), same as any SaaS ("Sign in with
+Google" needs a Google Cloud project once; every end user still just clicks a button).
+
+**Multi-tenant isolation, not just self-service:** the four shared-secret webhooks (Kubernetes, eBPF,
+feature flags, CI/CD) each generate a *per-workspace* secret rather than reusing one global env var —
+compromising one tenant's secret can't touch another tenant's data. Lookup is an indexed `secret_hash`
+column (SHA-256, O(1) `WHERE` match), not a decrypt-every-row scan, so it holds up past a handful of
+tenants. Rotating a secret in Settings keeps the old one valid for 24h (`previous_secret_hash` +
+expiry) so an in-flight agent/CI runner never gets a hard outage mid-rotation. The single global env
+var (`KUBERNETES_WEBHOOK_SECRET`, etc.) still works as a single-tenant/dev fallback, but a connected
+workspace never touches that path.
+
+## 7. Everything else already shipped (the product itself)
 
 The full 45-feature production build — deep health checks, Redis-backed rate limiting, hardened cookies,
 distributed tracing, AI root-cause summaries, GitHub pinpoint, postmortem export, Kubernetes/eBPF ingestion,

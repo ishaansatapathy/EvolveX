@@ -52,7 +52,13 @@ export function ProductionEngineeringPanel() {
               <p className="evx-dash__stat-note">
                 Service <code>{selfQuery.data.serviceName}</code> · OTel{" "}
                 {selfQuery.data.otel.enabled
-                  ? `exporting ${selfQuery.data.otel.metricsEnabled ? "traces + metrics" : "traces"} to SigNoz`
+                  ? `exporting ${[
+                      "traces",
+                      selfQuery.data.otel.metricsEnabled && "metrics",
+                      selfQuery.data.otel.logsEnabled && "logs",
+                    ]
+                      .filter(Boolean)
+                      .join(" + ")} to SigNoz`
                   : "disabled (set SIGNOZ_INGESTION_KEY)"}
               </p>
               <p className="evx-dash__stat-note">

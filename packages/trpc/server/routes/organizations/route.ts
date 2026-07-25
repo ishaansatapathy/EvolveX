@@ -5,13 +5,17 @@ import {
   removeOrganizationIntegration,
   testGithubIntegration,
   testJiraIntegration,
+  testPagerDutyIntegration,
   testSignozIntegration,
+  testSlackIntegration,
   upsertGithubIntegration,
   upsertJiraIntegration,
   upsertPagerDutyIntegration,
   upsertSignozIntegration,
   upsertSlackIntegration,
   generateKubernetesOnboarding,
+  generateWebhookSignalOnboarding,
+  type WebhookSignalProvider,
 } from "@repo/services/organization/integrations";
 import { ensureUserOrganization, updateOrganization } from "@repo/services/organization";
 
@@ -19,8 +23,22 @@ import { mapServiceError, protectedProcedure, router } from "../../trpc";
 
 const TAGS = ["Organizations"];
 
+const INTEGRATION_PROVIDER_VALUES = [
+  "signoz",
+  "github",
+  "slack",
+  "pagerduty",
+  "jira",
+  "kubernetes",
+  "ebpf",
+  "feature_flag",
+  "cicd",
+] as const;
+
+const webhookSignalProviderSchema = z.enum(["ebpf", "feature_flag", "cicd"]);
+
 const integrationSummarySchema = z.object({
-  provider: z.enum(["signoz", "github", "slack", "pagerduty", "jira", "kubernetes"]),
+  provider: z.enum(INTEGRATION_PROVIDER_VALUES),
   configured: z.boolean(),
   source: z.enum(["organization", "environment"]),
   config: z.record(z.string(), z.unknown()),
@@ -220,7 +238,7 @@ export const organizationsRouter = router({
       .input(
         z.object({
           organizationId: z.string().uuid().optional(),
-          provider: z.enum(["signoz", "github", "slack", "pagerduty", "jira", "kubernetes"]),
+          provider: z.enum(INTEGRATION_PROVIDER_VALUES),
         }),
       )
       .output(z.object({ ok: z.literal(true) }))
@@ -278,6 +296,34 @@ export const organizationsRouter = router({
         }
       }),
 
+    testSlack: protectedProcedure
+      .input(z.object({ organizationId: z.string().uuid().optional() }).optional())
+      .output(probeResultSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          const organization = input?.organizationId
+            ? { id: input.organizationId }
+            : await ensureUserOrganization(ctx.user.id);
+          return testSlackIntegration(organization.id);
+        } catch (error) {
+          mapServiceError(error);
+        }
+      }),
+
+    testPagerDuty: protectedProcedure
+      .input(z.object({ organizationId: z.string().uuid().optional() }).optional())
+      .output(probeResultSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          const organization = input?.organizationId
+            ? { id: input.organizationId }
+            : await ensureUserOrganization(ctx.user.id);
+          return testPagerDutyIntegration(organization.id);
+        } catch (error) {
+          mapServiceError(error);
+        }
+      }),
+
     generateKubernetesOnboarding: protectedProcedure
       .input(
         z.object({
@@ -313,6 +359,49 @@ export const organizationsRouter = router({
             clusterName: input.clusterName,
             rotateSecret: input.rotateSecret,
           });
+        } catch (error) {
+          mapServiceError(error);
+        }
+      }),
+
+    /**
+     * Self-service "Connect" for the signal webhooks (eBPF/feature-flag/CI-CD) — generates an
+     * org-scoped secret (indexed hash-lookup, dual-secret rotation window) and returns the
+     * ready-to-paste webhook URL + curl example, same UX bar as `generateKubernetesOnboarding`.
+     */
+    generateSignalWebhook: protectedProcedure
+      .input(
+        z.object({
+          organizationId: z.string().uuid().optional(),
+          provider: webhookSignalProviderSchema,
+          rotateSecret: z.boolean().optional(),
+        }),
+      )
+      .output(
+        z.object({
+          provider: webhookSignalProviderSchema,
+          label: z.string(),
+          webhookUrl: z.string(),
+          webhookSecret: z.string(),
+          maskedWebhookSecret: z.string().nullable(),
+          headerName: z.string(),
+          docsHint: z.string(),
+          curlExample: z.string(),
+          configured: z.boolean(),
+          source: z.enum(["organization", "environment"]),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const organization = input.organizationId
+            ? { id: input.organizationId }
+            : await ensureUserOrganization(ctx.user.id);
+          return generateWebhookSignalOnboarding(
+            ctx.user.id,
+            organization.id,
+            input.provider as WebhookSignalProvider,
+            { rotateSecret: input.rotateSecret },
+          );
         } catch (error) {
           mapServiceError(error);
         }

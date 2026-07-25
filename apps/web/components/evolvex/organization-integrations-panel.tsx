@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { trpc } from "~/trpc/client";
 
 type IntegrationSummary = {
-  provider: "signoz" | "github" | "slack" | "pagerduty" | "jira" | "kubernetes";
+  provider: "signoz" | "github" | "slack" | "pagerduty" | "jira" | "kubernetes" | "ebpf" | "feature_flag" | "cicd";
   configured: boolean;
   source: "organization" | "environment";
   config: Record<string, unknown>;
@@ -18,6 +19,7 @@ type OrganizationIntegrationsPanelProps = {
   organizationName?: string;
   isOwner: boolean;
   baseUrl?: string;
+  slackOAuthConfigured?: boolean;
 };
 
 const PROVIDER_LABELS: Record<IntegrationSummary["provider"], string> = {
@@ -27,6 +29,9 @@ const PROVIDER_LABELS: Record<IntegrationSummary["provider"], string> = {
   pagerduty: "PagerDuty",
   jira: "Jira",
   kubernetes: "Kubernetes",
+  ebpf: "eBPF / OBI",
+  feature_flag: "Feature flags",
+  cicd: "CI/CD",
 };
 
 export function OrganizationIntegrationsPanel({
@@ -34,8 +39,12 @@ export function OrganizationIntegrationsPanel({
   organizationName,
   isOwner,
   baseUrl = "http://localhost:8000",
+  slackOAuthConfigured = false,
 }: OrganizationIntegrationsPanelProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const utils = trpc.useUtils();
+  const [showManualSlackForm, setShowManualSlackForm] = useState(false);
   const integrationsQuery = trpc.organizations.integrations.list.useQuery(
     { organizationId },
     { enabled: Boolean(organizationId) && isOwner },
@@ -90,6 +99,14 @@ export function OrganizationIntegrationsPanel({
     { organizationId },
     { enabled: false },
   );
+  const slackTest = trpc.organizations.integrations.testSlack.useQuery(
+    { organizationId },
+    { enabled: false },
+  );
+  const pagerDutyTest = trpc.organizations.integrations.testPagerDuty.useQuery(
+    { organizationId },
+    { enabled: false },
+  );
 
   const [signozForm, setSignozForm] = useState({
     cloudUrl: "",
@@ -119,6 +136,32 @@ export function OrganizationIntegrationsPanel({
   } | null>(null);
 
   const githubWebhookUrl = `${baseUrl.replace(/\/+$/, "")}/webhooks/github`;
+  const slackAuthorizeUrl = organizationId
+    ? `${baseUrl.replace(/\/+$/, "")}/integrations/slack/authorize?organizationId=${organizationId}`
+    : null;
+
+  useEffect(() => {
+    const slackStatus = searchParams.get("slack");
+    if (!slackStatus) return;
+
+    const slackMessage = searchParams.get("slack_message");
+    if (slackStatus === "connected") {
+      setMessageTone("success");
+      setMessage(slackMessage ? `Slack connected — posting to ${slackMessage}.` : "Slack connected.");
+      void utils.organizations.integrations.list.invalidate();
+      void utils.integrations.health.invalidate();
+    } else if (slackStatus === "error") {
+      setMessageTone("error");
+      setMessage(slackMessage ?? "Slack connection failed.");
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("slack");
+    params.delete("slack_message");
+    const query = params.toString();
+    router.replace(query ? `/settings?${query}` : "/settings", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const byProvider = useMemo(() => {
     const map = new Map<IntegrationSummary["provider"], IntegrationSummary>();
@@ -142,15 +185,18 @@ export function OrganizationIntegrationsPanel({
     );
   }
 
-  async function handleTest(provider: "signoz" | "github" | "jira") {
+  async function handleTest(provider: "signoz" | "github" | "jira" | "slack" | "pagerduty") {
     if (provider === "github") setGithubTesting(true);
     try {
-      const result =
-        provider === "signoz"
-          ? await signozTest.refetch()
-          : provider === "github"
-            ? await githubTest.refetch()
-            : await jiraTest.refetch();
+      const result = await (
+        {
+          signoz: signozTest,
+          github: githubTest,
+          jira: jiraTest,
+          slack: slackTest,
+          pagerduty: pagerDutyTest,
+        }[provider].refetch()
+      );
       const tone = result.data?.ok ? "success" : "error";
       const text = result.data?.message ?? "Connection test failed";
       setMessageTone(tone);
@@ -434,30 +480,28 @@ export function OrganizationIntegrationsPanel({
             <p className="evx-dash__settings-label">{PROVIDER_LABELS.slack}</p>
             {renderSourceBadge(byProvider.get("slack"))}
           </div>
-          <label className="evx-dash__org-field">
-            <span>Incoming webhook URL</span>
-            <input
-              type="url"
-              placeholder="https://hooks.slack.com/services/…"
-              value={slackForm.webhookUrl}
-              onChange={(event) => setSlackForm({ webhookUrl: event.target.value })}
-            />
-          </label>
-          <div className="evx-dash__cause-actions">
-            <button
-              type="button"
-              className="evx-dash__btn-primary"
-              disabled={upsertSlack.isPending}
-              onClick={async () => {
-                await upsertSlack.mutateAsync({
-                  organizationId,
-                  webhookUrl: slackForm.webhookUrl || undefined,
-                });
-                setMessage("Slack webhook saved to workspace vault.");
-              }}
-            >
-              Save Slack
-            </button>
+
+          {byProvider.get("slack")?.configured && byProvider.get("slack")?.config.connectedVia === "oauth" ? (
+            <p className="evx-dash__stat-note" style={{ marginBottom: "0.65rem" }}>
+              Connected to <strong>{String(byProvider.get("slack")?.config.teamName ?? "a Slack workspace")}</strong>
+              {typeof byProvider.get("slack")?.config.channel === "string"
+                ? ` · posting to #${byProvider.get("slack")?.config.channel}`
+                : ""}
+              .
+            </p>
+          ) : (
+            <p className="evx-dash__stat-note" style={{ marginBottom: "0.65rem" }}>
+              One click — no webhook URL to find or copy. Evolvex posts investigation-ready and case-resolved
+              notifications to the channel you pick during Slack&apos;s install screen.
+            </p>
+          )}
+
+          <div className="evx-dash__cause-actions" style={{ marginBottom: showManualSlackForm ? "0.75rem" : 0 }}>
+            {slackOAuthConfigured && slackAuthorizeUrl ? (
+              <a href={slackAuthorizeUrl} className="evx-dash__btn-primary">
+                {byProvider.get("slack")?.config.connectedVia === "oauth" ? "Reconnect Slack" : "Add to Slack"}
+              </a>
+            ) : null}
             {byProvider.get("slack")?.source === "organization" ? (
               <button
                 type="button"
@@ -467,10 +511,55 @@ export function OrganizationIntegrationsPanel({
                   setMessage("Slack workspace credentials removed.");
                 }}
               >
-                Remove vault
+                Disconnect
               </button>
             ) : null}
+            <button
+              type="button"
+              className="evx-dash__btn-ghost"
+              onClick={() => setShowManualSlackForm((prev) => !prev)}
+            >
+              {showManualSlackForm ? "Hide manual setup" : slackOAuthConfigured ? "Use a webhook URL instead" : "Manual setup"}
+            </button>
           </div>
+
+          {showManualSlackForm ? (
+            <>
+              <label className="evx-dash__org-field">
+                <span>Incoming webhook URL</span>
+                <input
+                  type="url"
+                  placeholder="https://hooks.slack.com/services/…"
+                  value={slackForm.webhookUrl}
+                  onChange={(event) => setSlackForm({ webhookUrl: event.target.value })}
+                />
+              </label>
+              <div className="evx-dash__cause-actions">
+                <button
+                  type="button"
+                  className="evx-dash__btn-primary"
+                  disabled={upsertSlack.isPending}
+                  onClick={async () => {
+                    await upsertSlack.mutateAsync({
+                      organizationId,
+                      webhookUrl: slackForm.webhookUrl || undefined,
+                    });
+                    setMessage("Slack webhook saved to workspace vault.");
+                  }}
+                >
+                  Save webhook URL
+                </button>
+              </div>
+            </>
+          ) : null}
+
+          {byProvider.get("slack")?.configured ? (
+            <div className="evx-dash__cause-actions" style={{ marginTop: "0.5rem" }}>
+              <button type="button" className="evx-dash__btn-ghost" onClick={() => handleTest("slack")}>
+                Send test message
+              </button>
+            </div>
+          ) : null}
         </article>
 
         <article className="evx-dash__settings-card">
@@ -502,6 +591,11 @@ export function OrganizationIntegrationsPanel({
             >
               Save PagerDuty
             </button>
+            {byProvider.get("pagerduty")?.configured ? (
+              <button type="button" className="evx-dash__btn-ghost" onClick={() => handleTest("pagerduty")}>
+                Test
+              </button>
+            ) : null}
             {byProvider.get("pagerduty")?.source === "organization" ? (
               <button
                 type="button"

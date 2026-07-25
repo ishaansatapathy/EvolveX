@@ -1,5 +1,6 @@
 import { buildIntegrationHealth } from "@repo/services/integrations/status";
 import { buildIntegrationsEcosystemFeatures } from "@repo/services/integrations/ecosystem-features";
+import { isSlackOAuthConfigured } from "@repo/services/env";
 import {
   probeDatabaseConnection,
   probeOpenAiConnection,
@@ -45,6 +46,7 @@ const integrationHealthSchema = z.object({
   summary: z.string(),
   productionMode: z.boolean(),
   baseUrl: z.string(),
+  slackOAuthConfigured: z.boolean(),
   cloudUrl: z.string().nullable(),
   defaultServiceName: z.string(),
   integrations: z.array(integrationHealthItemSchema),
@@ -87,7 +89,7 @@ export const integrationsRouter = router({
           hasOrganizationIntegrations(organization.id),
         ]);
 
-      return buildIntegrationHealth({
+      const health = buildIntegrationHealth({
         databaseConnected,
         orgSignozConfigured,
         orgGithubConfigured,
@@ -98,6 +100,8 @@ export const integrationsRouter = router({
         orgKubernetesConfigured,
         orgSource: orgHasVault ? "organization" : "environment",
       });
+
+      return { ...health, slackOAuthConfigured: isSlackOAuthConfigured() };
     }),
 
   testSignoz: protectedProcedure

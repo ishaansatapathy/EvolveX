@@ -27,7 +27,10 @@ This repo includes `casting.yaml` and `casting.yaml.lock` at the repo root. Judg
 
 ```bash
 # Install foundryctl: https://github.com/SigNoz/foundry#installation
-foundryctl cast -f casting.yaml
+pnpm signoz:local:up      # foundryctl cast -f casting.yaml — gauge + forge + deploy in one command
+pnpm signoz:local:status  # docker compose ps for the generated stack
+pnpm signoz:local:logs    # tail the signoz container
+pnpm signoz:local:down    # docker compose down (data volumes untouched)
 ```
 
 SigNoz UI: http://localhost:8080 · OTLP: http://localhost:4318
@@ -100,20 +103,47 @@ SSL and pool sizing for Neon are handled automatically in `packages/database/pg.
 
 ## Telemetry (dogfooding)
 
-When `SIGNOZ_INGESTION_KEY` is set, the API auto-instruments with OpenTelemetry as service `evolvex-api`. Visitor traffic appears in **Traces** and **Logs** pages (live SigNoz queries, no mock data).
+When `SIGNOZ_INGESTION_KEY` is set, the API auto-instruments with OpenTelemetry as service `evolvex-api`,
+exporting all three pillars — **traces**, runtime **metrics**, and `@repo/logger` **logs** (trace-correlated) —
+to SigNoz. Visitor traffic appears live in **Traces**, **Logs**, and **Dashboards** pages, no mock data.
+Opt out of a single pillar with `OTEL_METRICS_EXPORTER=none` / `OTEL_LOGS_EXPORTER=none`.
 
 ## Scripts
 
 ```bash
+pnpm signoz:local:up          # foundryctl cast — one-command self-hosted SigNoz (+ MCP) via Docker
+pnpm signoz:local:down        # Tear down the Foundry-generated stack (volumes kept)
 pnpm signoz:loadgen   # Send real traces to SigNoz
 pnpm signoz:p99       # Tail latency load for p99 alerts
 pnpm signoz:alert-setup       # Create p99-latency + error-rate alert rules via SigNoz API
 pnpm signoz:postmortem-pack   # Compile a markdown postmortem from live SigNoz evidence
+pnpm clickhouse:apply-mvs     # Apply direct-ClickHouse materialized views (self-hosted only)
 pnpm investigation:seed  # Seed a real investigation via webhook handler
 pnpm obi:up             # OBI eBPF demo (Docker Linux only) → SigNoz OTLP
 pnpm obi:bridge         # Poll OBI metrics in SigNoz → Evolvex eBPF webhook
 pnpm db:seed          # Seed auth demo user
 ```
+
+### Self-service integrations (no repo cloning, no manual webhook hunting)
+
+Settings → **Connect integrations** lets a workspace owner wire up SigNoz, GitHub, Slack, PagerDuty, Jira,
+and Kubernetes entirely from the browser — paste-a-key for most, real OAuth for Slack:
+
+- **Slack — "Add to Slack" OAuth**: set `SLACK_CLIENT_ID`/`SLACK_CLIENT_SECRET` (create a Slack App at
+  [api.slack.com/apps](https://api.slack.com/apps) with the `incoming-webhook` bot scope and redirect URL
+  `<BASE_URL>/integrations/slack/callback`) and the Settings page shows a one-click **Add to Slack** button —
+  no webhook URL to find or paste. Falls back to manual webhook-URL entry when unset.
+- **SigNoz / GitHub / PagerDuty / Jira**: paste an API key/token/URL directly in Settings — encrypted at
+  rest per workspace, same UX as the SigNoz Cloud key.
+- **Kubernetes**: Settings generates a scoped webhook secret + ready-to-run Helm command; once your cluster's
+  collector reports in, the panel flips to a live "✅ Cluster connected" status automatically (no SaaS ever
+  needs your cluster credentials — you run one Helm command in your own cluster, the same trust model as
+  Datadog/New Relic agents).
+- **eBPF / feature flags / CI-CD**: Settings → **Connect signal webhooks** generates a per-workspace secret +
+  ready-to-paste URL/curl example for each source (OBI/Hubble/Pixie, LaunchDarkly/Flagsmith, GitHub
+  Actions/CircleCI/Jenkins). Each workspace's secret is isolated — an indexed `secret_hash` lookup resolves
+  the owning organization per request, and "Rotate secret" keeps the old one valid for 24h so an in-flight
+  agent/CI runner never breaks mid-rotation. No shared global secret across tenants.
 
 ## Deploy (Railway + Vercel + Neon)
 

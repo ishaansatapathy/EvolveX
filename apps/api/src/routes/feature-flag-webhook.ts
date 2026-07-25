@@ -1,8 +1,9 @@
 import express from "express";
 import { logger } from "@repo/logger";
 import InvestigationService from "@repo/services/investigation";
-import { featureFlagEventSchema } from "@repo/services/feature-flags/webhook-parser";
-import { requireWebhookSecret } from "@repo/services/webhooks/verify";
+import { featureFlagEventSchema, parseFeatureFlagEvent } from "@repo/services/feature-flags/webhook-parser";
+import { requireOrgWebhookAuth } from "@repo/services/webhooks/verify";
+import { recordWebhookSignalEvent } from "@repo/services/organization/integrations";
 
 import { resolveInvestigationOwnerUserId } from "@repo/services/investigation/owner";
 import { resolveOrganizationForUser } from "@repo/services/organization";
@@ -19,11 +20,17 @@ featureFlagWebhookRouter.get("/", (_req, res) => {
     webhookUrl: `${baseUrl.replace(/\/+$/, "")}/webhooks/feature-flags`,
     webhookAuthConfigured: Boolean(process.env.FEATURE_FLAG_WEBHOOK_SECRET?.trim()),
     supportedProviders: ["launchdarkly", "flagsmith", "openfeature", "generic"],
+    note: "Per-workspace secrets (Settings → Connect integrations) take priority over this legacy env var.",
   });
 });
 
 featureFlagWebhookRouter.post("/", async (req, res) => {
-  if (!requireWebhookSecret(req, res, "FEATURE_FLAG_WEBHOOK_SECRET", "x-evolvex-flag-secret")) return;
+  const auth = await requireOrgWebhookAuth(req, res, {
+    provider: "feature_flag",
+    envKey: "FEATURE_FLAG_WEBHOOK_SECRET",
+    headerName: "x-evolvex-flag-secret",
+  });
+  if (!auth.ok) return;
 
   const parsed = featureFlagEventSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -31,8 +38,21 @@ featureFlagWebhookRouter.post("/", async (req, res) => {
   }
 
   try {
-    const ownerUserId = await resolveInvestigationOwnerUserId();
-    const organizationId = await resolveOrganizationForUser(ownerUserId);
+    let organizationId = auth.organizationId;
+    if (!organizationId) {
+      const ownerUserId = await resolveInvestigationOwnerUserId();
+      organizationId = await resolveOrganizationForUser(ownerUserId);
+    }
+
+    if (organizationId) {
+      const flagEvent = parseFeatureFlagEvent(parsed.data);
+      await recordWebhookSignalEvent({
+        organizationId,
+        provider: "feature_flag",
+        summary: `${flagEvent.flagName} ${flagEvent.action}`,
+      });
+    }
+
     const result = await investigationService.handleFeatureFlagWebhook(parsed.data, { organizationId });
     logger.info("Feature flag webhook processed", result);
     return res.status(200).json({ ok: true, ...result });

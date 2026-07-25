@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { trpc } from "~/trpc/client";
 
@@ -9,6 +9,17 @@ type KubernetesOnboardingPanelProps = {
   isOwner: boolean;
 };
 
+function relativeTime(iso: string): string {
+  const deltaMs = Date.now() - new Date(iso).getTime();
+  const seconds = Math.max(0, Math.round(deltaMs / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 export function KubernetesOnboardingPanel({ organizationId, isOwner }: KubernetesOnboardingPanelProps) {
   const [clusterName, setClusterName] = useState("production");
   const [copied, setCopied] = useState<string | null>(null);
@@ -16,6 +27,26 @@ export function KubernetesOnboardingPanel({ organizationId, isOwner }: Kubernete
   const collectorQuery = trpc.telemetryIntelligence.collectorConfig.useQuery(undefined, {
     enabled: Boolean(organizationId) && isOwner,
   });
+  const integrationsQuery = trpc.organizations.integrations.list.useQuery(
+    { organizationId },
+    { enabled: Boolean(organizationId) && isOwner },
+  );
+
+  const kubernetesItem = integrationsQuery.data?.find((item) => item.provider === "kubernetes");
+  const lastEventAt = typeof kubernetesItem?.config.lastEventAt === "string" ? kubernetesItem.config.lastEventAt : null;
+  const clusterMetadata = (kubernetesItem?.config.clusterMetadata ?? {}) as {
+    clusterVersion?: string | null;
+    namespaces?: string[];
+    nodeCount?: number | null;
+    lastEventKind?: string | null;
+  };
+
+  // Poll while waiting for the first event so "Connect Kubernetes" flips to "Connected" live, no refresh needed.
+  useEffect(() => {
+    if (!kubernetesItem?.configured || lastEventAt) return;
+    const interval = setInterval(() => void integrationsQuery.refetch(), 5000);
+    return () => clearInterval(interval);
+  }, [kubernetesItem?.configured, lastEventAt, integrationsQuery]);
 
   if (!isOwner) return null;
 
@@ -38,6 +69,21 @@ export function KubernetesOnboardingPanel({ organizationId, isOwner }: Kubernete
           </p>
         </div>
       </div>
+
+      {kubernetesItem?.configured ? (
+        <p
+          className={`evx-dash__integration-message evx-dash__integration-message--${lastEventAt ? "success" : "info"}`}
+          style={{ marginTop: "0.5rem" }}
+        >
+          {lastEventAt
+            ? `✅ Cluster connected — last event ${relativeTime(lastEventAt)}${
+                clusterMetadata.lastEventKind ? ` (${clusterMetadata.lastEventKind})` : ""
+              }${clusterMetadata.nodeCount ? ` · ${clusterMetadata.nodeCount} nodes` : ""}${
+                clusterMetadata.clusterVersion ? ` · k8s ${clusterMetadata.clusterVersion}` : ""
+              }`
+            : "⏳ Waiting for the first event from your cluster — run the Helm command below, then this updates automatically."}
+        </p>
+      ) : null}
 
       <div className="evx-dash__settings-card" style={{ marginTop: "0.75rem" }}>
         <label className="evx-dash__org-field">

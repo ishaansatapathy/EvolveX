@@ -2,7 +2,8 @@ import express from "express";
 import { logger } from "@repo/logger";
 import InvestigationService from "@repo/services/investigation";
 import { ebpfEventSchema } from "@repo/services/ebpf/webhook-parser";
-import { requireWebhookSecret } from "@repo/services/webhooks/verify";
+import { requireOrgWebhookAuth } from "@repo/services/webhooks/verify";
+import { recordWebhookSignalEvent } from "@repo/services/organization/integrations";
 
 import { resolveInvestigationOwnerUserId } from "@repo/services/investigation/owner";
 import { resolveOrganizationForUser } from "@repo/services/organization";
@@ -18,11 +19,17 @@ ebpfWebhookRouter.get("/", (_req, res) => {
     message: "Evolvex eBPF webhook endpoint",
     webhookUrl: `${baseUrl.replace(/\/+$/, "")}/webhooks/ebpf`,
     webhookAuthConfigured: Boolean(process.env.EBPF_WEBHOOK_SECRET?.trim()),
+    note: "Per-workspace secrets (Settings → Connect integrations) take priority over this legacy env var.",
   });
 });
 
 ebpfWebhookRouter.post("/", async (req, res) => {
-  if (!requireWebhookSecret(req, res, "EBPF_WEBHOOK_SECRET", "x-evolvex-ebpf-secret")) return;
+  const auth = await requireOrgWebhookAuth(req, res, {
+    provider: "ebpf",
+    envKey: "EBPF_WEBHOOK_SECRET",
+    headerName: "x-evolvex-ebpf-secret",
+  });
+  if (!auth.ok) return;
 
   const parsed = ebpfEventSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -30,8 +37,20 @@ ebpfWebhookRouter.post("/", async (req, res) => {
   }
 
   try {
-    const ownerUserId = await resolveInvestigationOwnerUserId();
-    const organizationId = await resolveOrganizationForUser(ownerUserId);
+    let organizationId = auth.organizationId;
+    if (!organizationId) {
+      const ownerUserId = await resolveInvestigationOwnerUserId();
+      organizationId = await resolveOrganizationForUser(ownerUserId);
+    }
+
+    if (organizationId) {
+      await recordWebhookSignalEvent({
+        organizationId,
+        provider: "ebpf",
+        summary: `${parsed.data.type} · ${parsed.data.service ?? "unknown service"}`,
+      });
+    }
+
     const result = await investigationService.handleEbpfWebhook(parsed.data, { organizationId });
     logger.info("eBPF webhook processed", result);
     return res.status(200).json({ ok: true, ...result });

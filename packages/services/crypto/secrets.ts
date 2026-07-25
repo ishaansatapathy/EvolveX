@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from "node:crypto";
 
 const ALGO = "aes-256-gcm";
 const IV_LENGTH = 12;
@@ -36,6 +36,16 @@ export function decryptSecretPayload(ciphertext: string): Record<string, unknown
   decipher.setAuthTag(tag);
   const plaintext = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
   return JSON.parse(plaintext) as Record<string, unknown>;
+}
+
+/**
+ * SHA-256 hex of a shared webhook secret (kubernetes/ebpf/feature_flag/cicd) — stored alongside
+ * the encrypted secret so an inbound webhook can resolve its organization with an indexed
+ * `WHERE secret_hash = ?` lookup instead of decrypting every integration row on every request.
+ * Not reversible, so it's safe to index/query even though it's derived from a secret.
+ */
+export function hashWebhookSecret(secret: string): string {
+  return createHash("sha256").update(secret.trim()).digest("hex");
 }
 
 export function maskSecret(value: string | undefined | null, visible = 4): string | null {

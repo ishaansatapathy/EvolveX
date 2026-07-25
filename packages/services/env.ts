@@ -43,6 +43,9 @@ const envSchema = z.object({
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
   GOOGLE_OAUTH_REDIRECT_URI: z.string().optional(),
+  /** Slack App (api.slack.com/apps) — "Add to Slack" self-service connect, no manual webhook copy-paste */
+  SLACK_CLIENT_ID: z.string().optional(),
+  SLACK_CLIENT_SECRET: z.string().optional(),
   /** Brevo (recommended) ? transactional email to any recipient */
   BREVO_API_KEY: z.string().optional(),
   /** e.g. Thread <noreply@yourdomain.com> — sender must be verified in Brevo */
@@ -83,6 +86,19 @@ export function getGoogleOAuthConfig() {
 export function isGoogleOAuthConfigured() {
   const { clientId, clientSecret, redirectUri } = getGoogleOAuthConfig();
   return !!(clientId && clientSecret && redirectUri);
+}
+
+export function getSlackOAuthConfig() {
+  return {
+    clientId: env.SLACK_CLIENT_ID?.trim() || process.env.SLACK_CLIENT_ID?.trim(),
+    clientSecret: env.SLACK_CLIENT_SECRET?.trim() || process.env.SLACK_CLIENT_SECRET?.trim(),
+  };
+}
+
+/** True once an operator has registered a Slack App — enables the one-click "Add to Slack" button. */
+export function isSlackOAuthConfigured() {
+  const { clientId, clientSecret } = getSlackOAuthConfig();
+  return !!(clientId && clientSecret);
 }
 
 export function isEmailConfigured() {

@@ -76,19 +76,25 @@ export function buildIntegrationsEcosystemFeatures(input?: {
       id: "#51",
       label: "eBPF / OBI integration",
       status: isEbpfWebhookConfigured() ? "active" : "optional",
-      detail: isEbpfWebhookConfigured() ? "OBI webhook active" : "Set EBPF_WEBHOOK_SECRET",
+      detail: isEbpfWebhookConfigured()
+        ? "OBI webhook active (env fallback)"
+        : "Connect per-workspace in Settings, or set EBPF_WEBHOOK_SECRET",
     },
     {
       id: "#52",
       label: "Feature flag correlation",
       status: isFeatureFlagWebhookConfigured() ? "active" : "optional",
-      detail: isFeatureFlagWebhookConfigured() ? "Feature flag webhook active" : "Set FEATURE_FLAG_WEBHOOK_SECRET",
+      detail: isFeatureFlagWebhookConfigured()
+        ? "Feature flag webhook active (env fallback)"
+        : "Connect per-workspace in Settings, or set FEATURE_FLAG_WEBHOOK_SECRET",
     },
     {
       id: "#53",
       label: "CI/CD correlation",
       status: isCicdWebhookConfigured() ? "active" : "optional",
-      detail: isCicdWebhookConfigured() ? "CI/CD webhook active" : "Set CICD_WEBHOOK_SECRET",
+      detail: isCicdWebhookConfigured()
+        ? "CI/CD webhook active (env fallback)"
+        : "Connect per-workspace in Settings, or set CICD_WEBHOOK_SECRET",
     },
     { id: "#54", label: "Timeline UX improvements", status: "active", detail: "Grouping, filters, search" },
     { id: "#55", label: "Telemetry intelligence dashboard", status: "active", detail: "Dashboards page" },

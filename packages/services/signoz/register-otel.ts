@@ -2,13 +2,16 @@
  * Registers OpenTelemetry export to SigNoz when SIGNOZ_INGESTION_KEY is set.
  * No-op when ingestion is not configured — never emits synthetic spans.
  *
- * Exports both traces (auto-instrumented HTTP/DB/etc. spans) and runtime
- * metrics (event-loop lag, GC, heap, CPU, HTTP histograms — from
- * @opentelemetry/auto-instrumentations-node's HostMetrics/RuntimeNodeMetrics)
- * alongside each other, matching the "traces + metrics + logs" three-pillar
- * story SigNoz is built for. Set OTEL_METRICS_EXPORTER=none to opt out of
- * metrics while keeping traces (mirrors the SigNoz MCP server's own env var
- * of the same name/semantics).
+ * Exports all three observability pillars alongside each other:
+ *  - traces: auto-instrumented HTTP/DB/etc. spans
+ *  - metrics: event-loop lag, GC, heap, CPU, HTTP histograms (from
+ *    @opentelemetry/auto-instrumentations-node's HostMetrics/RuntimeNodeMetrics)
+ *  - logs: every @repo/logger (winston) call, auto-bridged to OTel log records
+ *    with trace_id/span_id correlation via @opentelemetry/instrumentation-winston
+ *    (bundled in getNodeAutoInstrumentations()) once a LoggerProvider is registered
+ *
+ * Set OTEL_METRICS_EXPORTER=none / OTEL_LOGS_EXPORTER=none to opt out of a pillar
+ * while keeping the others (mirrors the SigNoz MCP server's own env var semantics).
  */
 export function registerOtel(serviceName: string): void {
   const ingestionKey = process.env.SIGNOZ_INGESTION_KEY?.trim();
@@ -21,6 +24,7 @@ export function registerOtel(serviceName: string): void {
     "",
   );
   const metricsEnabled = process.env.OTEL_METRICS_EXPORTER !== "none";
+  const logsEnabled = process.env.OTEL_LOGS_EXPORTER !== "none";
   const metricExportIntervalMs =
     Number.parseInt(process.env.OTEL_METRIC_EXPORT_INTERVAL_MS ?? "", 10) || 60_000;
 
@@ -33,50 +37,68 @@ export function registerOtel(serviceName: string): void {
         import("@opentelemetry/semantic-conventions"),
         metricsEnabled ? import("@opentelemetry/exporter-metrics-otlp-http") : Promise.resolve(null),
         metricsEnabled ? import("@opentelemetry/sdk-metrics") : Promise.resolve(null),
-      ]).then(([auto, traceExporterMod, resources, semconv, metricExporterMod, sdkMetricsMod]) => {
-        const resource = resources.resourceFromAttributes({
-          [semconv.ATTR_SERVICE_NAME]: serviceName,
-          [semconv.ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV ?? "development",
-        });
+        logsEnabled ? import("@opentelemetry/exporter-logs-otlp-http") : Promise.resolve(null),
+        logsEnabled ? import("@opentelemetry/sdk-logs") : Promise.resolve(null),
+      ]).then(
+        ([auto, traceExporterMod, resources, semconv, metricExporterMod, sdkMetricsMod, logExporterMod, sdkLogsMod]) => {
+          const resource = resources.resourceFromAttributes({
+            [semconv.ATTR_SERVICE_NAME]: serviceName,
+            [semconv.ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV ?? "development",
+          });
 
-        const metricReader =
-          metricExporterMod && sdkMetricsMod
-            ? new sdkMetricsMod.PeriodicExportingMetricReader({
-                exporter: new metricExporterMod.OTLPMetricExporter({
-                  url: `${ingestionUrl}/v1/metrics`,
-                  headers: {
-                    "signoz-ingestion-key": ingestionKey,
-                  },
-                }),
-                exportIntervalMillis: metricExportIntervalMs,
-              })
-            : undefined;
+          const metricReader =
+            metricExporterMod && sdkMetricsMod
+              ? new sdkMetricsMod.PeriodicExportingMetricReader({
+                  exporter: new metricExporterMod.OTLPMetricExporter({
+                    url: `${ingestionUrl}/v1/metrics`,
+                    headers: {
+                      "signoz-ingestion-key": ingestionKey,
+                    },
+                  }),
+                  exportIntervalMillis: metricExportIntervalMs,
+                })
+              : undefined;
 
-        const sdk = new NodeSDK({
-          resource,
-          traceExporter: new traceExporterMod.OTLPTraceExporter({
-            url: `${ingestionUrl}/v1/traces`,
-            headers: {
-              "signoz-ingestion-key": ingestionKey,
-            },
-          }),
-          ...(metricReader ? { metricReader } : {}),
-          instrumentations: [auto.getNodeAutoInstrumentations()],
-        });
+          const logRecordProcessor =
+            logExporterMod && sdkLogsMod
+              ? new sdkLogsMod.BatchLogRecordProcessor({
+                  exporter: new logExporterMod.OTLPLogExporter({
+                    url: `${ingestionUrl}/v1/logs`,
+                    headers: {
+                      "signoz-ingestion-key": ingestionKey,
+                    },
+                  }),
+                })
+              : undefined;
 
-        sdk.start();
+          const sdk = new NodeSDK({
+            resource,
+            traceExporter: new traceExporterMod.OTLPTraceExporter({
+              url: `${ingestionUrl}/v1/traces`,
+              headers: {
+                "signoz-ingestion-key": ingestionKey,
+              },
+            }),
+            ...(metricReader ? { metricReader } : {}),
+            ...(logRecordProcessor ? { logRecordProcessors: [logRecordProcessor] } : {}),
+            instrumentations: [auto.getNodeAutoInstrumentations()],
+          });
 
-        console.log(
-          `[otel:${serviceName}] started (traces${metricReader ? " + metrics" : ""}) → ${ingestionUrl}`,
-        );
+          sdk.start();
 
-        const shutdown = () => {
-          void sdk.shutdown();
-        };
+          const pillars = ["traces", metricReader && "metrics", logRecordProcessor && "logs"]
+            .filter(Boolean)
+            .join(" + ");
+          console.log(`[otel:${serviceName}] started (${pillars}) → ${ingestionUrl}`);
 
-        process.once("SIGTERM", shutdown);
-        process.once("SIGINT", shutdown);
-      }),
+          const shutdown = () => {
+            void sdk.shutdown();
+          };
+
+          process.once("SIGTERM", shutdown);
+          process.once("SIGINT", shutdown);
+        },
+      ),
     )
     .catch((err) => {
       console.warn(`[otel:${serviceName}] Failed to initialize`, err);

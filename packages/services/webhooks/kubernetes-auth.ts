@@ -1,10 +1,7 @@
 import type { Request, Response } from "express";
 
-import {
-  resolveKubernetesWebhookSecret,
-  resolveOrganizationIdForKubernetesWebhook,
-} from "../organization/integrations";
-import { requireWebhookSecret } from "./verify";
+import { resolveKubernetesWebhookSecret, resolveOrganizationIdForWebhookSecret } from "../organization/integrations";
+import { checkWebhookSecretRateLimit, requireWebhookSecret } from "./verify";
 
 export async function requireKubernetesWebhookAuth(
   req: Request,
@@ -15,8 +12,9 @@ export async function requireKubernetesWebhookAuth(
   const secret = typeof providedSecret === "string" ? providedSecret.trim() : "";
 
   if (secret) {
-    const orgFromSecret = await resolveOrganizationIdForKubernetesWebhook(secret);
+    const orgFromSecret = await resolveOrganizationIdForWebhookSecret("kubernetes", secret);
     if (orgFromSecret) {
+      if (!(await checkWebhookSecretRateLimit(res, "kubernetes", secret))) return { ok: false };
       return { ok: true, organizationId: orgFromSecret };
     }
 

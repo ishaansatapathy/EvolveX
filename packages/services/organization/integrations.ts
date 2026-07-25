@@ -4,11 +4,13 @@ import {
   organizationIntegrationsTable,
   organizationMembersTable,
   type OrganizationIntegrationProvider,
+  type WebhookSecretProvider,
 } from "@repo/database/schema";
 import { serviceError } from "../errors";
 import {
   decryptSecretPayload,
   encryptSecretPayload,
+  hashWebhookSecret,
   maskSecret,
 } from "../crypto/secrets";
 import {
@@ -28,10 +30,47 @@ import {
   mergeKubernetesClusterMetadata,
   type KubernetesClusterMetadata,
 } from "../kubernetes/onboarding";
-import { isKubernetesWebhookConfigured } from "../integrations/config";
+import {
+  isCicdWebhookConfigured,
+  isEbpfWebhookConfigured,
+  isFeatureFlagWebhookConfigured,
+  isKubernetesWebhookConfigured,
+} from "../integrations/config";
 import { recordAuditEvent } from "../audit/log";
 import { registerGithubRepositoryWebhook, type GithubWebhookRegistrationResult } from "./github-webhook-register";
 import { organizationRoleAllows } from "./permissions";
+
+/** 24h grace window — rotating a webhook secret never causes a hard outage for in-flight agents/CI runners. */
+const SECRET_ROTATION_GRACE_MS = 24 * 60 * 60 * 1000;
+
+export type WebhookSignalProvider = Exclude<WebhookSecretProvider, "kubernetes">;
+
+export const WEBHOOK_SIGNAL_META: Record<
+  WebhookSignalProvider,
+  { path: string; header: string; envKey: string; label: string; docsHint: string }
+> = {
+  ebpf: {
+    path: "/webhooks/ebpf",
+    header: "x-evolvex-ebpf-secret",
+    envKey: "EBPF_WEBHOOK_SECRET",
+    label: "eBPF / OBI",
+    docsHint: "Point your OBI/Pixie bridge (pnpm obi:bridge) or eBPF agent at this URL.",
+  },
+  feature_flag: {
+    path: "/webhooks/feature-flags",
+    header: "x-evolvex-flag-secret",
+    envKey: "FEATURE_FLAG_WEBHOOK_SECRET",
+    label: "Feature flags",
+    docsHint: "LaunchDarkly/Flagsmith/OpenFeature: add this as a custom webhook with the header below.",
+  },
+  cicd: {
+    path: "/webhooks/cicd",
+    header: "x-evolvex-cicd-secret",
+    envKey: "CICD_WEBHOOK_SECRET",
+    label: "CI/CD",
+    docsHint: "GitHub Actions / CircleCI / Jenkins / GitLab: POST build/deploy events to this URL.",
+  },
+};
 
 export type OrganizationIntegrationSummary = {
   provider: OrganizationIntegrationProvider;
@@ -307,6 +346,9 @@ export async function listOrganizationIntegrations(
     "pagerduty",
     "jira",
     "kubernetes",
+    "ebpf",
+    "feature_flag",
+    "cicd",
   ];
   return providers.map((provider) => {
     const row = byProvider.get(provider);
@@ -317,6 +359,9 @@ export async function listOrganizationIntegrations(
     if (provider === "slack") return buildSlackSummaryFromEnv();
     if (provider === "jira") return buildJiraSummaryFromEnv();
     if (provider === "kubernetes") return buildKubernetesSummaryFromEnv();
+    if (provider === "ebpf") return buildEbpfSummaryFromEnv();
+    if (provider === "feature_flag") return buildFeatureFlagSummaryFromEnv();
+    if (provider === "cicd") return buildCicdSummaryFromEnv();
     return buildPagerDutySummaryFromEnv();
   });
 }
@@ -425,7 +470,38 @@ export async function upsertSlackIntegration(
     throw serviceError("BAD_REQUEST", "Slack webhook URL is required");
   }
 
-  await saveIntegration(userId, organizationId, "slack", {}, secrets, "integration.slack.upsert");
+  const config = { ...(existing?.config ?? {}), connectedVia: "manual" };
+
+  await saveIntegration(userId, organizationId, "slack", config, secrets, "integration.slack.upsert");
+}
+
+/**
+ * Completes the "Add to Slack" OAuth flow — called from the OAuth callback route once Slack has
+ * granted a bot token + incoming webhook. No user-facing form, no token to find/copy: this is the
+ * same one-click bar as connecting SigNoz Cloud, but for Slack specifically no secret ever needs
+ * to be located by the user in the first place.
+ */
+export async function completeSlackOAuthConnection(
+  userId: string,
+  organizationId: string,
+  connection: { teamId: string; teamName: string; webhookUrl: string; webhookChannel: string | null; botAccessToken: string },
+) {
+  await assertOrganizationOwner(userId, organizationId);
+
+  const secrets = {
+    webhookUrl: connection.webhookUrl,
+    botAccessToken: connection.botAccessToken,
+  };
+
+  const config = {
+    connectedVia: "oauth",
+    teamId: connection.teamId,
+    teamName: connection.teamName,
+    channel: connection.webhookChannel,
+    connectedAt: new Date().toISOString(),
+  };
+
+  await saveIntegration(userId, organizationId, "slack", config, secrets, "integration.slack.oauth_connect");
 }
 
 export async function upsertPagerDutyIntegration(
@@ -502,11 +578,7 @@ export async function generateKubernetesOnboarding(
   const existing = await loadIntegrationRow(organizationId, "kubernetes");
   const existingSecrets = existing ? decryptRowSecrets(existing) : {};
   const existingConfig = existing?.config ?? {};
-
-  const webhookSecret =
-    input?.rotateSecret || !existingSecrets.webhookSecret
-      ? generateKubernetesWebhookSecret()
-      : String(existingSecrets.webhookSecret);
+  const hasExistingSecret = typeof existingSecrets.webhookSecret === "string" && existingSecrets.webhookSecret;
 
   const clusterName =
     input?.clusterName?.trim() ||
@@ -520,19 +592,41 @@ export async function generateKubernetesOnboarding(
       ? signozSecrets.ingestionKey.trim()
       : process.env.SIGNOZ_INGESTION_KEY?.trim();
 
-  await saveIntegration(
-    userId,
-    organizationId,
-    "kubernetes",
-    {
-      clusterName,
-      lastEventAt: existingConfig.lastEventAt ?? null,
-      clusterMetadata: existingConfig.clusterMetadata ?? {},
-      helmInstalledAt: existingConfig.helmInstalledAt ?? new Date().toISOString(),
-    },
-    { webhookSecret },
-    "integration.kubernetes.onboard",
-  );
+  const nextConfig = {
+    clusterName,
+    lastEventAt: existingConfig.lastEventAt ?? null,
+    clusterMetadata: existingConfig.clusterMetadata ?? {},
+    helmInstalledAt: existingConfig.helmInstalledAt ?? new Date().toISOString(),
+  };
+
+  let webhookSecret: string;
+  if (input?.rotateSecret && hasExistingSecret) {
+    // Rotate via the grace-window path (24h dual-secret validity) instead of a hard cutover,
+    // then persist the fresh cluster/onboarding config alongside the already-rotated secret.
+    webhookSecret = await rotateWebhookSecretProvider(userId, organizationId, "kubernetes");
+    const rotated = await loadIntegrationRow(organizationId, "kubernetes");
+    await saveIntegrationWithSecretHash(
+      userId,
+      organizationId,
+      "kubernetes",
+      nextConfig,
+      { webhookSecret },
+      "integration.kubernetes.onboard",
+      rotated
+        ? { previousSecretHash: rotated.previousSecretHash, previousSecretExpiresAt: rotated.previousSecretExpiresAt }
+        : undefined,
+    );
+  } else {
+    webhookSecret = hasExistingSecret ? String(existingSecrets.webhookSecret) : generateKubernetesWebhookSecret();
+    await saveIntegrationWithSecretHash(
+      userId,
+      organizationId,
+      "kubernetes",
+      nextConfig,
+      { webhookSecret },
+      "integration.kubernetes.onboard",
+    );
+  }
 
   const plan = buildKubernetesOnboardingPlan({
     organizationId,
@@ -578,7 +672,14 @@ export async function upsertKubernetesIntegration(
     helmInstalledAt: existingConfig.helmInstalledAt ?? null,
   };
 
-  await saveIntegration(userId, organizationId, "kubernetes", config, secrets, "integration.kubernetes.upsert");
+  await saveIntegrationWithSecretHash(
+    userId,
+    organizationId,
+    "kubernetes",
+    config,
+    secrets,
+    "integration.kubernetes.upsert",
+  );
 }
 
 export async function removeOrganizationIntegration(
@@ -644,6 +745,236 @@ async function saveIntegration(
     resourceId: `${organizationId}:${provider}`,
     metadata: { provider },
   });
+}
+
+/**
+ * Same as `saveIntegration`, but also maintains the `secret_hash` / `previous_secret_hash`
+ * columns for the shared-secret webhook providers (kubernetes/ebpf/feature_flag/cicd). This is
+ * what makes `resolveOrganizationIdForWebhookSecret` an indexed O(1) lookup instead of a full
+ * table scan that decrypts every row on every inbound webhook.
+ */
+async function saveIntegrationWithSecretHash(
+  userId: string,
+  organizationId: string,
+  provider: WebhookSecretProvider,
+  config: Record<string, unknown>,
+  secrets: Record<string, unknown>,
+  auditAction: string,
+  rotation?: { previousSecretHash: string | null; previousSecretExpiresAt: Date | null },
+) {
+  const secretsEncrypted = encryptSecretPayload(secrets);
+  const secretHash = typeof secrets.webhookSecret === "string" ? hashWebhookSecret(secrets.webhookSecret) : null;
+  const existing = await loadIntegrationRow(organizationId, provider);
+
+  const values = {
+    config,
+    secretsEncrypted,
+    secretHash,
+    previousSecretHash: rotation?.previousSecretHash ?? null,
+    previousSecretExpiresAt: rotation?.previousSecretExpiresAt ?? null,
+    updatedByUserId: userId,
+    updatedAt: new Date(),
+  };
+
+  if (existing) {
+    await db.update(organizationIntegrationsTable).set(values).where(eq(organizationIntegrationsTable.id, existing.id));
+  } else {
+    await db.insert(organizationIntegrationsTable).values({ organizationId, provider, ...values });
+  }
+
+  await recordAuditEvent({
+    actorUserId: userId,
+    action: auditAction,
+    resourceType: "organization_integration",
+    resourceId: `${organizationId}:${provider}`,
+    metadata: { provider },
+  });
+}
+
+/**
+ * Resolves which organization owns a shared webhook secret in O(1) via the indexed `secret_hash`
+ * column — no decrypting every `organization_integrations` row on every inbound webhook. Also
+ * honors a still-valid rotated-out `previous_secret_hash` so rotating a secret in Settings never
+ * causes an in-flight agent/CI runner to start failing before it's redeployed with the new value.
+ */
+export async function resolveOrganizationIdForWebhookSecret(
+  provider: WebhookSecretProvider,
+  secret: string,
+): Promise<string | null> {
+  const hash = hashWebhookSecret(secret);
+
+  const [current] = await db
+    .select({ organizationId: organizationIntegrationsTable.organizationId })
+    .from(organizationIntegrationsTable)
+    .where(and(eq(organizationIntegrationsTable.provider, provider), eq(organizationIntegrationsTable.secretHash, hash)))
+    .limit(1);
+  if (current) return current.organizationId;
+
+  const [rotatedOut] = await db
+    .select({
+      organizationId: organizationIntegrationsTable.organizationId,
+      previousSecretExpiresAt: organizationIntegrationsTable.previousSecretExpiresAt,
+    })
+    .from(organizationIntegrationsTable)
+    .where(
+      and(
+        eq(organizationIntegrationsTable.provider, provider),
+        eq(organizationIntegrationsTable.previousSecretHash, hash),
+      ),
+    )
+    .limit(1);
+
+  if (rotatedOut?.previousSecretExpiresAt && rotatedOut.previousSecretExpiresAt.getTime() > Date.now()) {
+    return rotatedOut.organizationId;
+  }
+
+  return null;
+}
+
+/**
+ * Generates a fresh secret for a shared-secret webhook provider and keeps the old one valid for a
+ * grace window, so rotating in Settings doesn't break an agent/CI runner still using the old value.
+ */
+export async function rotateWebhookSecretProvider(
+  userId: string,
+  organizationId: string,
+  provider: WebhookSecretProvider,
+): Promise<string> {
+  await assertOrganizationOwner(userId, organizationId);
+
+  const existing = await loadIntegrationRow(organizationId, provider);
+  const existingSecrets = existing ? decryptRowSecrets(existing) : {};
+  const oldSecret = typeof existingSecrets.webhookSecret === "string" ? existingSecrets.webhookSecret : null;
+  const newSecret = generateKubernetesWebhookSecret();
+
+  await saveIntegrationWithSecretHash(
+    userId,
+    organizationId,
+    provider,
+    existing?.config ?? {},
+    { ...existingSecrets, webhookSecret: newSecret },
+    `integration.${provider}.secret_rotated`,
+    oldSecret
+      ? {
+          previousSecretHash: hashWebhookSecret(oldSecret),
+          previousSecretExpiresAt: new Date(Date.now() + SECRET_ROTATION_GRACE_MS),
+        }
+      : undefined,
+  );
+
+  return newSecret;
+}
+
+function buildEbpfSummaryFromEnv(): OrganizationIntegrationSummary {
+  return {
+    provider: "ebpf",
+    configured: isEbpfWebhookConfigured(),
+    source: "environment",
+    config: { lastEventAt: null },
+    maskedSecrets: { webhookSecret: maskSecret(process.env.EBPF_WEBHOOK_SECRET) },
+    updatedAt: null,
+  };
+}
+
+function buildFeatureFlagSummaryFromEnv(): OrganizationIntegrationSummary {
+  return {
+    provider: "feature_flag",
+    configured: isFeatureFlagWebhookConfigured(),
+    source: "environment",
+    config: { lastEventAt: null },
+    maskedSecrets: { webhookSecret: maskSecret(process.env.FEATURE_FLAG_WEBHOOK_SECRET) },
+    updatedAt: null,
+  };
+}
+
+function buildCicdSummaryFromEnv(): OrganizationIntegrationSummary {
+  return {
+    provider: "cicd",
+    configured: isCicdWebhookConfigured(),
+    source: "environment",
+    config: { lastEventAt: null },
+    maskedSecrets: { webhookSecret: maskSecret(process.env.CICD_WEBHOOK_SECRET) },
+    updatedAt: null,
+  };
+}
+
+/**
+ * Self-service "Connect" for the signal webhooks (eBPF/feature-flag/CI-CD) — same shape as
+ * `generateKubernetesOnboarding` but without a Helm chart: generates an org-scoped secret (or
+ * returns the existing one) and the ready-to-paste webhook URL + curl example for the source tool.
+ */
+export async function generateWebhookSignalOnboarding(
+  userId: string,
+  organizationId: string,
+  provider: WebhookSignalProvider,
+  input?: { rotateSecret?: boolean },
+) {
+  await assertOrganizationOwner(userId, organizationId);
+
+  const meta = WEBHOOK_SIGNAL_META[provider];
+  const existing = await loadIntegrationRow(organizationId, provider);
+  const existingSecrets = existing ? decryptRowSecrets(existing) : {};
+  const hasExistingSecret = typeof existingSecrets.webhookSecret === "string" && existingSecrets.webhookSecret;
+
+  let webhookSecret: string;
+  if (input?.rotateSecret && hasExistingSecret) {
+    webhookSecret = await rotateWebhookSecretProvider(userId, organizationId, provider);
+  } else if (hasExistingSecret) {
+    webhookSecret = String(existingSecrets.webhookSecret);
+  } else {
+    webhookSecret = generateKubernetesWebhookSecret();
+    await saveIntegrationWithSecretHash(
+      userId,
+      organizationId,
+      provider,
+      existing?.config ?? { lastEventAt: null },
+      { webhookSecret },
+      `integration.${provider}.onboard`,
+    );
+  }
+
+  const baseUrl = getIntegrationBaseUrl();
+  const webhookUrl = `${baseUrl}${meta.path}`;
+
+  return {
+    provider,
+    label: meta.label,
+    webhookUrl,
+    webhookSecret,
+    maskedWebhookSecret: maskSecret(webhookSecret),
+    headerName: meta.header,
+    docsHint: meta.docsHint,
+    curlExample: [
+      `curl -X POST ${webhookUrl} \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -H "${meta.header}: ${webhookSecret}" \\`,
+      `  -d '{"...": "..."}'`,
+    ].join("\n"),
+    configured: true,
+    source: "organization" as const,
+  };
+}
+
+/** Records that a signal webhook (eBPF/feature-flag/CI-CD) delivered an event — drives the live "Connected" status in Settings. */
+export async function recordWebhookSignalEvent(input: {
+  organizationId: string;
+  provider: WebhookSignalProvider;
+  summary?: string | null;
+}) {
+  const row = await loadIntegrationRow(input.organizationId, input.provider);
+  if (!row) return;
+
+  await db
+    .update(organizationIntegrationsTable)
+    .set({
+      config: {
+        ...(row.config ?? {}),
+        lastEventAt: new Date().toISOString(),
+        lastEventSummary: input.summary ?? (row.config?.lastEventSummary ?? null),
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(organizationIntegrationsTable.id, row.id));
 }
 
 /** Resolves SigNoz credentials — org integration first, then process env. */
@@ -736,18 +1067,9 @@ export async function resolveKubernetesWebhookSecret(organizationId?: string | n
   return process.env.KUBERNETES_WEBHOOK_SECRET?.trim() ?? null;
 }
 
+/** @deprecated Use `resolveOrganizationIdForWebhookSecret("kubernetes", secret)` — kept as a thin alias. */
 export async function resolveOrganizationIdForKubernetesWebhook(secret: string) {
-  const rows = await db.select().from(organizationIntegrationsTable);
-  for (const row of rows) {
-    if (row.provider !== "kubernetes") continue;
-    const secrets = decryptRowSecrets(row);
-    const webhookSecret =
-      typeof secrets.webhookSecret === "string" ? secrets.webhookSecret.trim() : "";
-    if (webhookSecret && webhookSecret === secret.trim()) {
-      return row.organizationId;
-    }
-  }
-  return null;
+  return resolveOrganizationIdForWebhookSecret("kubernetes", secret);
 }
 
 export async function recordKubernetesClusterHeartbeat(input: {
@@ -972,6 +1294,81 @@ export async function testJiraIntegration(organizationId?: string | null) {
     return {
       ok: false,
       message: error instanceof Error ? error.message : "Jira connection failed",
+    };
+  }
+}
+
+/** Posts a real "Evolvex is connected" message — incoming webhooks have no dry-run/validate endpoint. */
+export async function testSlackIntegration(organizationId?: string | null) {
+  const webhookUrl = await resolveSlackWebhookUrl(organizationId);
+  if (!webhookUrl) {
+    return { ok: false, message: "Slack is not connected — use Add to Slack or paste a webhook URL below" };
+  }
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: ":white_check_mark: Evolvex is connected — investigation-ready and case-resolved alerts will post here.",
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      const hint = response.status === 404 ? " — webhook was likely revoked; reconnect Slack" : "";
+      return { ok: false, message: `Slack returned ${response.status}${hint}${body ? `: ${body.slice(0, 120)}` : ""}` };
+    }
+
+    return { ok: true, message: "Test message sent — check the Slack channel" };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Slack connection failed",
+    };
+  }
+}
+
+/** Triggers then immediately resolves a dedup'd test event — validates the routing key without leaving an open incident. */
+export async function testPagerDutyIntegration(organizationId?: string | null) {
+  const routingKey = await resolvePagerDutyRoutingKey(organizationId);
+  if (!routingKey) {
+    return { ok: false, message: "PagerDuty is not connected — paste an Events API v2 routing key below" };
+  }
+
+  const dedupKey = `evolvex-connection-test-${Date.now()}`;
+  const trigger = async (eventAction: "trigger" | "resolve") =>
+    fetch("https://events.pagerduty.com/v2/enqueue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        routing_key: routingKey,
+        event_action: eventAction,
+        dedup_key: dedupKey,
+        payload:
+          eventAction === "trigger"
+            ? {
+                summary: "Evolvex connection test (auto-resolves immediately)",
+                source: "evolvex",
+                severity: "info",
+              }
+            : undefined,
+      }),
+    });
+
+  try {
+    const response = await trigger("trigger");
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      const hint = response.status === 400 ? " — check the routing key" : "";
+      return { ok: false, message: `PagerDuty returned ${response.status}${hint}${body ? `: ${body.slice(0, 120)}` : ""}` };
+    }
+    await trigger("resolve").catch(() => undefined);
+    return { ok: true, message: "Routing key verified — a test event was sent and auto-resolved" };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "PagerDuty connection failed",
     };
   }
 }
