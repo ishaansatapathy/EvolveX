@@ -338,6 +338,14 @@ export const investigationOsContextSchema = z.object({
         rationale: z.string(),
         commands: z.array(z.string()),
         citationRefs: z.array(z.string()),
+        links: z
+          .array(
+            z.object({
+              label: z.string(),
+              url: z.string(),
+            }),
+          )
+          .optional(),
       }),
     ),
   }),

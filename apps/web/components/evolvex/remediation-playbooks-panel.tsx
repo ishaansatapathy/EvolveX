@@ -5,6 +5,7 @@ type RemediationPlaybookStep = {
   rationale: string;
   commands: string[];
   citationRefs: string[];
+  links?: Array<{ label: string; url: string }>;
 };
 
 type RemediationPlaybooksPanelProps = {
@@ -52,6 +53,21 @@ export function RemediationPlaybooksPanel({
             <p className="evx-dash__stat-note">{step.rationale}</p>
             {step.commands.length > 0 ? (
               <pre className="evx-dash__playbook-commands">{step.commands.join("\n")}</pre>
+            ) : null}
+            {step.links && step.links.length > 0 ? (
+              <div className="evx-dash__cause-actions" style={{ marginTop: "0.45rem", flexWrap: "wrap" }}>
+                {step.links.map((link) => (
+                  <a
+                    key={`${step.id}-${link.label}`}
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="evx-dash__btn-ghost"
+                  >
+                    {link.label} →
+                  </a>
+                ))}
+              </div>
             ) : null}
             {step.citationRefs.length > 0 ? (
               <div className="evx-dash__hypothesis-citations">

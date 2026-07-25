@@ -1,4 +1,5 @@
 import { buildIntegrationHealth } from "@repo/services/integrations/status";
+import { buildIntegrationsEcosystemFeatures } from "@repo/services/integrations/ecosystem-features";
 import {
   probeDatabaseConnection,
   probeOpenAiConnection,
@@ -121,4 +122,42 @@ export const integrationsRouter = router({
     .input(z.object({}).optional())
     .output(probeResultSchema)
     .query(async () => probeOpenAiConnection()),
+
+  ecosystemFeatures: protectedProcedure
+    .meta({ openapi: { method: "GET", path: "/integrations/ecosystem", tags: TAGS } })
+    .input(z.object({}).optional())
+    .output(
+      z.array(
+        z.object({
+          id: z.string(),
+          label: z.string(),
+          status: z.enum(["active", "partial", "optional"]),
+          detail: z.string(),
+        }),
+      ),
+    )
+    .query(async ({ ctx }) => {
+      const organization = await ensureUserOrganization(ctx.user.id);
+      const [orgSignozConfigured, orgGithubConfigured, orgGithubWebhookConfigured, slackWebhook, pagerDutyKey, orgJiraConfigured, orgKubernetesConfigured] =
+        await Promise.all([
+          isSignozConfiguredForOrganization(organization.id),
+          isGithubConfiguredForOrganization(organization.id),
+          isGithubWebhookConfiguredForOrganization(organization.id),
+          resolveSlackWebhookUrl(organization.id),
+          resolvePagerDutyRoutingKey(organization.id),
+          isJiraConfiguredForOrganization(organization.id),
+          isKubernetesConfiguredForOrganization(organization.id),
+        ]);
+
+      void orgSignozConfigured;
+
+      return buildIntegrationsEcosystemFeatures({
+        orgSlackConfigured: Boolean(slackWebhook),
+        orgPagerDutyConfigured: Boolean(pagerDutyKey),
+        orgJiraConfigured,
+        orgGithubConfigured,
+        orgGithubWebhookConfigured,
+        orgKubernetesConfigured,
+      });
+    }),
 });

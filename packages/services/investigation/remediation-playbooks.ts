@@ -1,8 +1,14 @@
 import type { CrossServiceRcaResult } from "./cross-service-rca";
 import type { EvidenceCompletenessResult } from "./evidence-completeness";
+import { buildGithubDeployRollbackActions } from "../github/deploy-actions";
 import type { ChangeEventRowDto, TimelineEntryDto } from "./types";
 
 export type RemediationStepPriority = "immediate" | "investigate" | "mitigate";
+
+export type RemediationPlaybookLink = {
+  label: string;
+  url: string;
+};
 
 export type RemediationPlaybookStep = {
   id: string;
@@ -11,6 +17,7 @@ export type RemediationPlaybookStep = {
   rationale: string;
   commands: string[];
   citationRefs: string[];
+  links?: RemediationPlaybookLink[];
 };
 
 export type RemediationPlaybookResult = {
@@ -61,6 +68,24 @@ export function buildRemediationPlaybooks(input: BuildPlaybooksInput): Remediati
   const alertRefs = refsForTimeline(input.timeline, input.citationRefByTimelineId, ["ALERT", "METRIC"]);
 
   if (input.hasDeployCorrelation && deployRefs.length > 0) {
+    const deployEvent = [...input.changeEvents]
+      .reverse()
+      .find((event) => event.type === "commit" || event.type === "deployment");
+    const repo = typeof deployEvent?.metadata.repo === "string" ? deployEvent.metadata.repo : null;
+    const sha = typeof deployEvent?.metadata.sha === "string" ? deployEvent.metadata.sha : null;
+    const branch = typeof deployEvent?.metadata.branch === "string" ? deployEvent.metadata.branch : null;
+    const links =
+      repo && sha
+        ? (() => {
+            const rollback = buildGithubDeployRollbackActions({ repo, sha, branch });
+            return [
+              { label: "View deploy diff", url: rollback.compareUrl },
+              { label: "Open commit (Revert)", url: rollback.revertGuideUrl },
+              { label: "GitHub Actions", url: rollback.actionsUrl },
+            ];
+          })()
+        : undefined;
+
     steps.push({
       id: "rollback-deploy",
       title: `Rollback or revert the recent ${service} deploy`,
@@ -72,6 +97,7 @@ export function buildRemediationPlaybooks(input: BuildPlaybooksInput): Remediati
         `kubectl rollout undo deployment/${service}`,
       ],
       citationRefs: deployRefs,
+      links,
     });
   }
 

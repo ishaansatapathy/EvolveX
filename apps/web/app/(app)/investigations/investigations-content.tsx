@@ -908,15 +908,44 @@ export default function InvestigationsPageContent() {
                       </button>
                     </div>
                     {pinpointQuery.data.deployCorrelation ? (
-                      <p className="evx-dash__stat-note" style={{ marginTop: "0.45rem" }}>
-                        Deploy:{" "}
-                        <a href={pinpointQuery.data.deployCorrelation.url} target="_blank" rel="noreferrer">
-                          {pinpointQuery.data.deployCorrelation.repo}@{pinpointQuery.data.deployCorrelation.sha.slice(0, 7)}
-                        </a>
-                        {pinpointQuery.data.deployCorrelation.changedFiles.length
-                          ? ` · ${pinpointQuery.data.deployCorrelation.changedFiles.slice(0, 4).join(", ")}`
-                          : null}
-                      </p>
+                      <div style={{ marginTop: "0.45rem" }}>
+                        <p className="evx-dash__stat-note">
+                          Deploy:{" "}
+                          <a href={pinpointQuery.data.deployCorrelation.url} target="_blank" rel="noreferrer">
+                            {pinpointQuery.data.deployCorrelation.repo}@
+                            {pinpointQuery.data.deployCorrelation.sha.slice(0, 7)}
+                          </a>
+                          {pinpointQuery.data.deployCorrelation.changedFiles.length
+                            ? ` · ${pinpointQuery.data.deployCorrelation.changedFiles.slice(0, 4).join(", ")}`
+                            : null}
+                        </p>
+                        <div className="evx-dash__cause-actions" style={{ flexWrap: "wrap" }}>
+                          <a
+                            href={pinpointQuery.data.deployCorrelation.rollback.compareUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="evx-dash__btn-ghost"
+                          >
+                            View deploy diff →
+                          </a>
+                          <a
+                            href={pinpointQuery.data.deployCorrelation.rollback.revertGuideUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="evx-dash__btn-ghost"
+                          >
+                            Revert on GitHub →
+                          </a>
+                          <a
+                            href={pinpointQuery.data.deployCorrelation.rollback.actionsUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="evx-dash__btn-ghost"
+                          >
+                            GitHub Actions →
+                          </a>
+                        </div>
+                      </div>
                     ) : null}
                     {fixPreview ? (
                       <>

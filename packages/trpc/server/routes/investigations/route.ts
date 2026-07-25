@@ -363,6 +363,11 @@ export const investigationsRouter = router({
               message: z.string().optional(),
               url: z.string(),
               changedFiles: z.array(z.string()),
+              rollback: z.object({
+                compareUrl: z.string(),
+                actionsUrl: z.string(),
+                revertGuideUrl: z.string(),
+              }),
             })
             .nullable(),
           githubApiConfigured: z.boolean(),

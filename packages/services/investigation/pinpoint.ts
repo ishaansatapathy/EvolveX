@@ -1,4 +1,5 @@
 import { fetchCommitChangedFiles, fetchRepoFileContent, githubBlobUrl, githubCommitUrl, isGithubApiConfigured } from "../github/api";
+import { buildGithubDeployRollbackActions } from "../github/deploy-actions";
 import { createSignozClient } from "../signoz/client";
 import { resolveGithubToken, resolveSignozConfig } from "../organization/integrations";
 import { parseStackLocations, pickBestStackLocation } from "./stack-trace";
@@ -25,6 +26,11 @@ export type PinpointResult = {
     message?: string;
     url: string;
     changedFiles: string[];
+    rollback: {
+      compareUrl: string;
+      actionsUrl: string;
+      revertGuideUrl: string;
+    };
   } | null;
   githubApiConfigured: boolean;
 };
@@ -87,20 +93,26 @@ export async function computeInvestigationPinpoint(input: {
     if (repo && sha && isGithubApiConfigured(githubToken)) {
       const files = await fetchCommitChangedFiles(repo, sha, githubToken);
       changedFiles = files.map((f) => f.filename);
+      const branch = typeof deployEvent.metadata.branch === "string" ? deployEvent.metadata.branch : undefined;
+      const rollback = buildGithubDeployRollbackActions({ repo, sha, branch });
       deployCorrelation = {
         repo,
         sha,
         message,
         url: githubCommitUrl(repo, sha),
         changedFiles,
+        rollback,
       };
     } else if (repo && sha) {
+      const branch = typeof deployEvent.metadata.branch === "string" ? deployEvent.metadata.branch : undefined;
+      const rollback = buildGithubDeployRollbackActions({ repo, sha, branch });
       deployCorrelation = {
         repo,
         sha,
         message,
         url: githubCommitUrl(repo, sha),
         changedFiles: [],
+        rollback,
       };
     }
   }
