@@ -4,7 +4,7 @@ builder = "NIXPACKS"
 buildCommand = "pnpm install --frozen-lockfile && pnpm db:migrate && pnpm build --filter=@repo/api"
 
 [deploy]
-startCommand = "pnpm --filter @repo/api start"
+startCommand = "node apps/api/dist/index.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
