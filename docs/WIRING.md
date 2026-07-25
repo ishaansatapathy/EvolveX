@@ -76,5 +76,6 @@ GITHUB_TOKEN=ghp_...   # scopes: repo (read)
 | `KUBERNETES_WEBHOOK_SECRET` | Cluster change events |
 | `EBPF_WEBHOOK_SECRET` | Direct eBPF webhook path |
 | `pnpm obi:up` | OBI demo → SigNoz OTLP |
+| `.cursor/mcp.json` | Query SigNoz from Cursor/Claude/Codex — see [SIGNOZ-MCP.md](./SIGNOZ-MCP.md) |
 
-See also: [DEMO.md](../DEMO.md), [EBPF-OBI.md](./EBPF-OBI.md)
+See also: [DEMO.md](../DEMO.md), [EBPF-OBI.md](./EBPF-OBI.md), [SIGNOZ-MCP.md](./SIGNOZ-MCP.md), [../HACKATHON.md](../HACKATHON.md)

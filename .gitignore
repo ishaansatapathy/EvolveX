@@ -15,6 +15,10 @@ out/
 .env.local
 .env.*.local
 
+# MCP client config with real API keys/headers — commit only mcp.json.example
+.cursor/mcp.json
+.vscode/mcp.json
+
 # Logs
 *.log
 npm-debug.log*
@@ -31,3 +35,6 @@ coverage/
 # Misc
 .vercel
 pours/
+
+# Generated postmortem packs (pnpm signoz:postmortem-pack) — local artifacts only
+postmortems/

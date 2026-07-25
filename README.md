@@ -42,6 +42,12 @@ SIGNOZ_INGESTION_KEY=<optional, for OTLP ingest>
 
 Run Evolvex separately (`pnpm dev` — see below). Foundry deploys **SigNoz only**; Evolvex is the application layer on top.
 
+`casting.yaml` also enables SigNoz's **MCP server** (`spec.mcp.spec.enabled: true`), so any MCP client
+(Cursor, Claude, Codex) can query the same traces/logs/metrics/alerts Evolvex investigates, in plain
+English. See [docs/SIGNOZ-MCP.md](./docs/SIGNOZ-MCP.md) for connecting `.cursor/mcp.json` to it (local or
+SigNoz Cloud), and for `pnpm signoz:alert-setup` / `pnpm signoz:postmortem-pack` — Node equivalents of the
+MCP server's alert-creation and postmortem-evidence workflows.
+
 ## Local setup
 
 ```bash
@@ -101,6 +107,8 @@ When `SIGNOZ_INGESTION_KEY` is set, the API auto-instruments with OpenTelemetry 
 ```bash
 pnpm signoz:loadgen   # Send real traces to SigNoz
 pnpm signoz:p99       # Tail latency load for p99 alerts
+pnpm signoz:alert-setup       # Create p99-latency + error-rate alert rules via SigNoz API
+pnpm signoz:postmortem-pack   # Compile a markdown postmortem from live SigNoz evidence
 pnpm investigation:seed  # Seed a real investigation via webhook handler
 pnpm obi:up             # OBI eBPF demo (Docker Linux only) → SigNoz OTLP
 pnpm obi:bridge         # Poll OBI metrics in SigNoz → Evolvex eBPF webhook

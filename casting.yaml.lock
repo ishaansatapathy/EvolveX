@@ -301,10 +301,13 @@ spec:
       cluster:
         replicas: 1
       config: {}
-      enabled: false
+      enabled: true
       image: signoz/signoz-mcp-server:latest
       version: latest
     status:
+      # Resolved by `foundryctl cast -f casting.yaml` once the container is
+      # forged — expect http: http://signoz-mcp:8000 (in-network) with the
+      # host port published at localhost:8000 (see docker-compose port map).
       addresses:
         http: null
       config: {}

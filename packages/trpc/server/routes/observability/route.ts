@@ -50,6 +50,7 @@ export const observabilityRouter = router({
           serviceName: z.string(),
           deploymentEnvironment: z.string(),
           ingestionUrl: z.string().nullable(),
+          metricsEnabled: z.boolean(),
         }),
         traceExplorerUrl: z.string().nullable(),
         counters: z.record(z.string(), z.number()),

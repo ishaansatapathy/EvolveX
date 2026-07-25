@@ -6,3 +6,10 @@ spec:
   deployment:
     flavor: compose
     mode: docker
+  # SigNoz MCP server — lets Cursor/Claude/Codex query traces, logs, metrics,
+  # alerts, and dashboards over the Model Context Protocol. Disabled by
+  # default upstream; Evolvex turns it on so judges/agents can query the
+  # same telemetry Evolvex investigates. See docs/SIGNOZ-MCP.md.
+  mcp:
+    spec:
+      enabled: true

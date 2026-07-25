@@ -25,6 +25,9 @@ const PRODUCTION_RECOMMENDED = [
   "SIGNOZ_CLOUD_URL",
   "SIGNOZ_API_KEY",
   "SIGNOZ_WEBHOOK_SECRET",
+  // Without this, Evolvex's own API never dogfoods OTel — Traces/Logs pages
+  // stay empty and there is no self-observability signal to alert on.
+  "SIGNOZ_INGESTION_KEY",
   "OPENAI_API_KEY",
   "GITHUB_TOKEN",
 ] as const;

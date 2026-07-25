@@ -28,6 +28,7 @@ describe("computeEvidenceCompleteness", () => {
         incidentWindow: { start: "", end: "" },
         signozConfigured: true,
         alertKind: "error",
+        notes: [],
       },
       status: "ready",
     });
@@ -63,6 +64,7 @@ describe("computeEvidenceCompleteness", () => {
         incidentWindow: { start: "", end: "" },
         signozConfigured: true,
         alertKind: "error",
+        notes: [],
       },
       status: "ready",
     });

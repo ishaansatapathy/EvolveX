@@ -13,6 +13,8 @@ export type SelfObservabilitySnapshot = {
     serviceName: string;
     deploymentEnvironment: string;
     ingestionUrl: string | null;
+    /** Runtime metrics (event loop, GC, heap, HTTP histograms) exported alongside traces — see register-otel.ts */
+    metricsEnabled: boolean;
   };
   traceExplorerUrl: string | null;
   counters: Record<string, number>;
@@ -83,6 +85,7 @@ export async function buildSelfObservabilitySnapshot(input?: {
       serviceName,
       deploymentEnvironment: process.env.NODE_ENV ?? "development",
       ingestionUrl: process.env.SIGNOZ_INGESTION_URL?.trim() ?? null,
+      metricsEnabled: ingestionConfigured && !sdkDisabled && process.env.OTEL_METRICS_EXPORTER !== "none",
     },
     traceExplorerUrl: buildTraceExplorerUrl(serviceName),
     counters,
@@ -107,7 +110,7 @@ export async function buildSelfObservabilitySnapshot(input?: {
       skipEnvValidation: process.env.SKIP_ENV_VALIDATION === "true",
     },
     notes: [
-      "Evolvex exports its own traces when SIGNOZ_INGESTION_KEY is configured (#39/#40).",
+      "Evolvex exports its own traces and runtime metrics when SIGNOZ_INGESTION_KEY is configured (#39/#40).",
       "Use the SigNoz link below to inspect API request latency and dependency spans.",
     ],
   };
