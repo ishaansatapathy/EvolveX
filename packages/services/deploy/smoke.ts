@@ -52,6 +52,15 @@ export async function runDeploySmoke(baseUrl: string): Promise<DeploySmokeResult
       if (record.database && record.database !== "ok") return `database=${record.database}`;
       return null;
     }),
+    runCheck("health_deep", `${normalized}/health/deep`, (response, body) => {
+      if (response.status === 503) {
+        const record = body as { healthy?: boolean } | null;
+        return record?.healthy === false ? "dependency checks failed" : `HTTP 503`;
+      }
+      if (!response.ok) return `HTTP ${response.status}`;
+      const record = body as { healthy?: boolean } | null;
+      return record?.healthy ? null : "healthy=false";
+    }),
     runCheck("openapi", `${normalized}/openapi.json`, (response) =>
       response.ok ? null : `HTTP ${response.status}`,
     ),

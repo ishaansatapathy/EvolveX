@@ -149,6 +149,26 @@ app.get("/health", async (_req, res) => {
   }
 });
 
+/** Feature #37 — dependency-aware health for ops dashboards and deploy smoke. */
+app.get("/health/deep", async (_req, res) => {
+  try {
+    const { buildDeepHealthSnapshot } = await import("@repo/services/observability/deep-health");
+    const snapshot = await buildDeepHealthSnapshot();
+    return res.status(snapshot.healthy ? 200 : 503).json(snapshot);
+  } catch (error) {
+    logger.error("Deep health check failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(503).json({
+      generatedAt: new Date().toISOString(),
+      healthy: false,
+      environment: process.env.NODE_ENV ?? "development",
+      checks: [],
+      message: error instanceof Error ? error.message : "Deep health unavailable",
+    });
+  }
+});
+
 app.get("/openapi.json", (_req, res) => {
   try {
     return res.json(getOpenApiDocument());
