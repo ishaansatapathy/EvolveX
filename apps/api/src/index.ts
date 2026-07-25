@@ -2,8 +2,6 @@ import http from "node:http";
 
 import "./register-otel";
 
-import { runApiBootstrap } from "./api-bootstrap";
-
 const PORT = Number(process.env.PORT ?? 8000);
 
 function writeJson(res: http.ServerResponse, status: number, body: unknown) {
@@ -45,7 +43,13 @@ async function bootstrap() {
   const { logger } = await import("@repo/logger");
   logger.info(`Evolvex API listening on 0.0.0.0:${PORT}`);
 
-  await runApiBootstrap({ serverless: false });
+  try {
+    const { runApiBootstrap } = await import("./api-bootstrap");
+    await runApiBootstrap({ serverless: false });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error("API bootstrap failed — /health stays up; fix env and redeploy", { err, message });
+  }
 
   try {
     const { app } = await import("./server");
@@ -59,6 +63,14 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  console.error("Fatal bootstrap error", err);
+  const message = err instanceof Error ? err.message : String(err);
+  console.error("Fatal bootstrap error:", message);
+  if (err instanceof Error && err.stack) {
+    console.error(err.stack);
+  }
+  console.error(
+    "Check Railway env vars: DATABASE_URL, JWT_SECRET (16+ chars), JWT_REFRESH_SECRET, " +
+      "SIGNOZ_WEBHOOK_SECRET, GITHUB_WEBHOOK_SECRET, NODE_ENV=production",
+  );
   process.exit(1);
 });
