@@ -1,3 +1,7 @@
+import { getTelemetryIntelligenceConfig } from "./config";
+import { applyClickHouseMaterializedViews } from "./clickhouse/apply-materialized-views";
+import { getPostgresMaterializedViewStatus } from "./clickhouse/postgres-materialized-views";
+
 export { getTelemetryIntelligenceConfig } from "./config";
 export {
   TelemetryIntelligenceOrchestrator,
@@ -22,12 +26,32 @@ export {
   getClickHouseMaterializedViewStatus,
 } from "./clickhouse/apply-materialized-views";
 export {
+  buildPostgresMaterializedInvestigationInsights,
+  getPostgresMaterializedViewStatus,
+  refreshPostgresMaterializedViewsFromInsights,
+} from "./clickhouse/postgres-materialized-views";
+export {
   buildInvestigationInsights,
   buildClickHouseInvestigationInsights,
   type InvestigationInsights,
   type ClickHouseInvestigationInsights,
 } from "./clickhouse/investigation-insights";
 export { buildSignozApiInvestigationInsights } from "./clickhouse/signoz-api-insights";
+
+/** Feature #4 — apply ClickHouse MVs when configured; Postgres MV cache for SigNoz Cloud. */
+export async function ensureTelemetryMaterializedViews(input?: { organizationId?: string | null }) {
+  const clickhouse = getTelemetryIntelligenceConfig().clickhouseEnabled
+    ? await applyClickHouseMaterializedViews()
+    : null;
+  const postgres = await getPostgresMaterializedViewStatus(input?.organizationId ?? null);
+
+  return {
+    clickhouse,
+    postgres,
+    ready: Boolean(clickhouse?.ok || postgres.ready),
+  };
+}
+
 export type {
   AlertEnrichmentSnapshot,
   SamplingPolicyDecision,

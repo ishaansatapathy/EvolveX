@@ -46,8 +46,9 @@ export type InvestigationRuntimeInsights = {
   enabled: true;
   serviceName: string;
   windowMinutes: number;
-  source: "materialized_view" | "native_query" | "signoz_api";
+  source: "materialized_view" | "postgres_materialized_view" | "native_query" | "signoz_api";
   materializedViewsAvailable: boolean;
+  materializedViewBackend?: "clickhouse" | "postgres";
   latencySummary: {
     requests: number;
     errors: number;

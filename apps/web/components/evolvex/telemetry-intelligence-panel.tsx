@@ -6,8 +6,9 @@ type RuntimeInsightsView = {
   enabled: true;
   serviceName: string;
   windowMinutes: number;
-  source: "materialized_view" | "native_query" | "signoz_api";
+  source: "materialized_view" | "postgres_materialized_view" | "native_query" | "signoz_api";
   materializedViewsAvailable: boolean;
+  materializedViewBackend?: "clickhouse" | "postgres";
   latencySummary: {
     requests: number;
     errors: number;
@@ -52,6 +53,8 @@ function insightSourceLabel(source: RuntimeInsightsView["source"]) {
   switch (source) {
     case "materialized_view":
       return "ClickHouse materialized views";
+    case "postgres_materialized_view":
+      return "Runtime MV cache (SigNoz Cloud)";
     case "native_query":
       return "ClickHouse native queries";
     case "signoz_api":

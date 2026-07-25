@@ -404,8 +404,9 @@ export const investigationOsContextSchema = z.object({
           enabled: z.literal(true),
           serviceName: z.string(),
           windowMinutes: z.number(),
-          source: z.enum(["materialized_view", "native_query", "signoz_api"]),
+          source: z.enum(["materialized_view", "postgres_materialized_view", "native_query", "signoz_api"]),
           materializedViewsAvailable: z.boolean(),
+          materializedViewBackend: z.enum(["clickhouse", "postgres"]).optional(),
           latencySummary: z
             .object({
               requests: z.number(),
@@ -429,8 +430,9 @@ export const investigationOsContextSchema = z.object({
           enabled: z.literal(true),
           serviceName: z.string(),
           windowMinutes: z.number(),
-          source: z.enum(["materialized_view", "native_query", "signoz_api"]),
+          source: z.enum(["materialized_view", "postgres_materialized_view", "native_query", "signoz_api"]),
           materializedViewsAvailable: z.boolean(),
+          materializedViewBackend: z.enum(["clickhouse", "postgres"]).optional(),
           latencySummary: z
             .object({
               requests: z.number(),

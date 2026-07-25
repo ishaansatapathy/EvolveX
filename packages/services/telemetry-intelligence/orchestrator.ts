@@ -165,6 +165,7 @@ export class TelemetryIntelligenceOrchestrator {
 
     const runtimeInsights = await buildInvestigationInsights({
       serviceName: primaryService,
+      organizationId: input.organizationId,
       windowMinutes: 15,
       endpointLimit: 5,
     });

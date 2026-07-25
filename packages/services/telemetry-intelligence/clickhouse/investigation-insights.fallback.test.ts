@@ -8,6 +8,11 @@ vi.mock("./client", () => ({
   queryTopFailingEndpoints: vi.fn(async () => null),
 }));
 
+vi.mock("./postgres-materialized-views", () => ({
+  buildPostgresMaterializedInvestigationInsights: vi.fn(async () => null),
+  refreshPostgresMaterializedViewsFromInsights: vi.fn(async () => undefined),
+}));
+
 vi.mock("./signoz-api-insights", () => ({
   buildSignozApiInvestigationInsights: vi.fn(async () => ({
     enabled: true as const,

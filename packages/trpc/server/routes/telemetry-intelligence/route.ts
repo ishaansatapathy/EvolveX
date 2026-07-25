@@ -71,8 +71,9 @@ const clickhouseInsightsSchema = z
     enabled: z.literal(true),
     serviceName: z.string(),
     windowMinutes: z.number(),
-    source: z.enum(["materialized_view", "native_query", "signoz_api"]),
+    source: z.enum(["materialized_view", "postgres_materialized_view", "native_query", "signoz_api"]),
     materializedViewsAvailable: z.boolean(),
+    materializedViewBackend: z.enum(["clickhouse", "postgres"]).optional(),
     latencySummary: z
       .object({
         requests: z.number(),
@@ -118,6 +119,7 @@ export const telemetryIntelligenceRouter = router({
     )
     .output(clickhouseInsightsSchema)
     .query(async ({ ctx, input }) => {
+      const organization = await ensureUserOrganization(ctx.user.id);
       const detail = await investigationService.getById(input.investigationId, ctx.user.id);
       if (!detail) return null;
 
@@ -127,6 +129,7 @@ export const telemetryIntelligenceRouter = router({
 
       return buildInvestigationInsights({
         serviceName,
+        organizationId: organization.id,
         windowMinutes: input.windowMinutes ?? 15,
         endpointLimit: 8,
       });
@@ -145,6 +148,7 @@ export const telemetryIntelligenceRouter = router({
     )
     .output(clickhouseInsightsSchema)
     .query(async ({ ctx, input }) => {
+      const organization = await ensureUserOrganization(ctx.user.id);
       const detail = await investigationService.getById(input.investigationId, ctx.user.id);
       if (!detail) return null;
 
@@ -154,6 +158,7 @@ export const telemetryIntelligenceRouter = router({
 
       return buildInvestigationInsights({
         serviceName,
+        organizationId: organization.id,
         windowMinutes: input.windowMinutes ?? 15,
         endpointLimit: 8,
       });
@@ -204,7 +209,14 @@ export const telemetryIntelligenceRouter = router({
           { id: "#1", label: "Adaptive tail sampling", status: "active" },
           { id: "#2", label: "OTel collector enrichment", status: "active" },
           { id: "#3", label: "Alert enrichment pipeline", status: "active" },
-          { id: "#4", label: "ClickHouse materialized views", status: config.clickhouseEnabled ? "active" : "self-hosted only" },
+          {
+            id: "#4",
+            label: "ClickHouse materialized views",
+            status:
+              config.clickhouseEnabled || isSignozConfigured()
+                ? "active"
+                : "optional",
+          },
           {
             id: "#5",
             label: "Runtime investigation queries",

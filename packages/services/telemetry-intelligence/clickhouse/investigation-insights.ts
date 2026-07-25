@@ -4,6 +4,11 @@ import {
   queryServiceLatencySummary,
   queryTopFailingEndpoints,
 } from "./client";
+import { buildSignozApiInvestigationInsights } from "./signoz-api-insights";
+import {
+  buildPostgresMaterializedInvestigationInsights,
+  refreshPostgresMaterializedViewsFromInsights,
+} from "./postgres-materialized-views";
 
 export type ClickHouseEndpointRow = {
   endpoint: string;
@@ -11,7 +16,11 @@ export type ClickHouseEndpointRow = {
   p99Ms: number | null;
 };
 
-export type InvestigationInsightSource = "materialized_view" | "native_query" | "signoz_api";
+export type InvestigationInsightSource =
+  | "materialized_view"
+  | "postgres_materialized_view"
+  | "native_query"
+  | "signoz_api";
 
 export type InvestigationInsights = {
   enabled: true;
@@ -19,6 +28,7 @@ export type InvestigationInsights = {
   windowMinutes: number;
   source: InvestigationInsightSource;
   materializedViewsAvailable: boolean;
+  materializedViewBackend?: "clickhouse" | "postgres";
   latencySummary: {
     requests: number;
     errors: number;
@@ -98,20 +108,31 @@ LIMIT {limit:UInt32}
   );
 }
 
-import { buildSignozApiInvestigationInsights } from "./signoz-api-insights";
-
 /** @deprecated Use InvestigationInsights */
 export type ClickHouseInvestigationInsights = InvestigationInsights;
 
-/** Feature #4 + #5 — MV → native CH → SigNoz API fallback chain. */
+/** Feature #4 + #5 — CH MV → Postgres MV → native CH → SigNoz API fallback chain. */
 export async function buildInvestigationInsights(input: {
   serviceName: string;
+  organizationId?: string | null;
   windowMinutes?: number;
   endpointLimit?: number;
 }): Promise<InvestigationInsights | null> {
   const clickhouse = await buildClickHouseInvestigationInsights(input);
   if (clickhouse) return clickhouse;
-  return buildSignozApiInvestigationInsights(input);
+
+  const postgresMv = await buildPostgresMaterializedInvestigationInsights(input);
+  if (postgresMv) return postgresMv;
+
+  const live = await buildSignozApiInvestigationInsights(input);
+  if (live) {
+    void refreshPostgresMaterializedViewsFromInsights({
+      organizationId: input.organizationId ?? null,
+      serviceName: input.serviceName,
+      insights: live,
+    }).catch(() => undefined);
+  }
+  return live;
 }
 
 /** Feature #4 + #5 — ClickHouse MV-first, native query fallback (self-hosted SigNoz). */
@@ -137,6 +158,7 @@ export async function buildClickHouseInvestigationInsights(input: {
       windowMinutes,
       source: "materialized_view",
       materializedViewsAvailable: true,
+      materializedViewBackend: "clickhouse",
       latencySummary: parseLatencyRow(mvLatency),
       topFailingEndpoints: parseEndpointRows(mvEndpoints),
       queryElapsedMs: Date.now() - started,
