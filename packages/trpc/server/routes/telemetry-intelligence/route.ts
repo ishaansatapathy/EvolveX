@@ -109,7 +109,11 @@ export const telemetryIntelligenceRouter = router({
 
   insightsForInvestigation: protectedProcedure
     .meta({
-      openapi: { method: "GET", path: "/telemetry-intelligence/investigations/{id}/insights", tags: TAGS },
+      openapi: {
+        method: "GET",
+        path: "/telemetry-intelligence/investigations/{investigationId}/insights",
+        tags: TAGS,
+      },
     })
     .input(
       z.object({
@@ -138,7 +142,11 @@ export const telemetryIntelligenceRouter = router({
   /** @deprecated use insightsForInvestigation */
   clickhouseForInvestigation: protectedProcedure
     .meta({
-      openapi: { method: "GET", path: "/telemetry-intelligence/investigations/{id}/clickhouse", tags: TAGS },
+      openapi: {
+        method: "GET",
+        path: "/telemetry-intelligence/investigations/{investigationId}/clickhouse",
+        tags: TAGS,
+      },
     })
     .input(
       z.object({
