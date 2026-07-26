@@ -261,155 +261,173 @@ export function OrganizationIntegrationsPanel({
       ) : null}
 
       <div className="evx-dash__org-integrations-grid">
-        <article className="evx-dash__settings-card">
+        <article className="evx-dash__settings-card evx-dash__signoz-integration-card">
           <div className="evx-dash__org-integration-head">
             <p className="evx-dash__settings-label">{PROVIDER_LABELS.signoz}</p>
             {renderSourceBadge(byProvider.get("signoz"))}
           </div>
-          <label className="evx-dash__org-field">
-            <span>Cloud URL</span>
-            <input
-              type="url"
-              placeholder="https://your-org.signoz.cloud"
-              value={signozForm.cloudUrl || String(byProvider.get("signoz")?.config.cloudUrl ?? "")}
-              onChange={(event) => setSignozForm((prev) => ({ ...prev, cloudUrl: event.target.value }))}
-            />
-          </label>
-          <label className="evx-dash__org-field">
-            <span>API key {byProvider.get("signoz")?.maskedSecrets.apiKey ? `(${byProvider.get("signoz")?.maskedSecrets.apiKey})` : ""}</span>
-            <input
-              type="password"
-              placeholder="Leave blank to keep existing"
-              value={signozForm.apiKey}
-              onChange={(event) => setSignozForm((prev) => ({ ...prev, apiKey: event.target.value }))}
-            />
-          </label>
-          <label className="evx-dash__org-field">
-            <span>Webhook secret</span>
-            <input
-              type="password"
-              placeholder="Optional — leave blank to keep existing"
-              value={signozForm.webhookSecret}
-              onChange={(event) => setSignozForm((prev) => ({ ...prev, webhookSecret: event.target.value }))}
-            />
-          </label>
-          <div className="evx-dash__cause-actions">
-            <button
-              type="button"
-              className="evx-dash__btn-primary"
-              disabled={upsertSignoz.isPending}
-              onClick={async () => {
-                await upsertSignoz.mutateAsync({
-                  organizationId,
-                  cloudUrl: signozForm.cloudUrl || String(byProvider.get("signoz")?.config.cloudUrl ?? ""),
-                  apiKey: signozForm.apiKey || undefined,
-                  webhookSecret: signozForm.webhookSecret || undefined,
-                  webhookPublicUrl: signozForm.webhookPublicUrl || undefined,
-                  defaultServiceName: signozForm.defaultServiceName || undefined,
-                  ingestionKey: signozForm.ingestionKey || undefined,
-                });
-                setMessage("SigNoz credentials saved to workspace vault.");
-                setMessageTone("success");
-              }}
-            >
-              Save SigNoz
-            </button>
-            <button type="button" className="evx-dash__btn-ghost" onClick={() => handleTest("signoz")}>
-              Test
-            </button>
-            {byProvider.get("signoz")?.source === "organization" ? (
-              <button
-                type="button"
-                className="evx-dash__btn-ghost"
-                onClick={async () => {
-                  await removeIntegration.mutateAsync({ organizationId, provider: "signoz" });
-                  setMessage("SigNoz workspace credentials removed — .env fallback will apply.");
-                }}
-              >
-                Remove vault
-              </button>
-            ) : null}
-          </div>
 
-          {byProvider.get("signoz")?.configured ? (
-            <div className="evx-dash__k8s-plan" style={{ marginTop: "0.75rem" }}>
-              <p className="evx-dash__settings-label">Alert webhook (multi-tenant)</p>
-              <p className="evx-dash__stat-note" style={{ marginBottom: "0.5rem" }}>
-                Generate a workspace-scoped webhook password so SigNoz alerts route straight to this
-                workspace — no shared secret, no re-pointing <code>INVESTIGATION_OWNER_EMAIL</code> per
-                tenant.
-              </p>
+          <div
+            className={
+              byProvider.get("signoz")?.configured
+                ? "evx-dash__signoz-integration-body"
+                : "evx-dash__signoz-integration-body evx-dash__signoz-integration-body--single"
+            }
+          >
+            <div className="evx-dash__signoz-integration-connect">
+              <div className="evx-dash__signoz-connect-fields">
+                <label className="evx-dash__org-field">
+                  <span>Cloud URL</span>
+                  <input
+                    type="url"
+                    placeholder="https://your-org.signoz.cloud"
+                    value={signozForm.cloudUrl || String(byProvider.get("signoz")?.config.cloudUrl ?? "")}
+                    onChange={(event) => setSignozForm((prev) => ({ ...prev, cloudUrl: event.target.value }))}
+                  />
+                </label>
+                <label className="evx-dash__org-field">
+                  <span>
+                    API key{" "}
+                    {byProvider.get("signoz")?.maskedSecrets.apiKey
+                      ? `(${byProvider.get("signoz")?.maskedSecrets.apiKey})`
+                      : ""}
+                  </span>
+                  <input
+                    type="password"
+                    placeholder="Leave blank to keep existing"
+                    value={signozForm.apiKey}
+                    onChange={(event) => setSignozForm((prev) => ({ ...prev, apiKey: event.target.value }))}
+                  />
+                </label>
+                <label className="evx-dash__org-field evx-dash__signoz-connect-fields__full">
+                  <span>Webhook secret</span>
+                  <input
+                    type="password"
+                    placeholder="Optional — leave blank to keep existing"
+                    value={signozForm.webhookSecret}
+                    onChange={(event) => setSignozForm((prev) => ({ ...prev, webhookSecret: event.target.value }))}
+                  />
+                </label>
+              </div>
               <div className="evx-dash__cause-actions">
                 <button
                   type="button"
                   className="evx-dash__btn-primary"
-                  disabled={!organizationId || generateSignozWebhook.isPending}
-                  onClick={() =>
-                    organizationId &&
-                    generateSignozWebhook.mutate({
+                  disabled={upsertSignoz.isPending}
+                  onClick={async () => {
+                    await upsertSignoz.mutateAsync({
                       organizationId,
-                      // First click reveals (or creates) the secret; subsequent clicks rotate it.
-                      rotateSecret: Boolean(generateSignozWebhook.data),
-                    })
-                  }
+                      cloudUrl: signozForm.cloudUrl || String(byProvider.get("signoz")?.config.cloudUrl ?? ""),
+                      apiKey: signozForm.apiKey || undefined,
+                      webhookSecret: signozForm.webhookSecret || undefined,
+                      webhookPublicUrl: signozForm.webhookPublicUrl || undefined,
+                      defaultServiceName: signozForm.defaultServiceName || undefined,
+                      ingestionKey: signozForm.ingestionKey || undefined,
+                    });
+                    setMessage("SigNoz credentials saved to workspace vault.");
+                    setMessageTone("success");
+                  }}
                 >
-                  {generateSignozWebhook.isPending
-                    ? "Generating…"
-                    : generateSignozWebhook.data
-                      ? "Rotate webhook password"
-                      : byProvider.get("signoz")?.maskedSecrets.webhookSecret
-                        ? "Reveal webhook credentials"
-                        : "Generate webhook credentials"}
+                  Save SigNoz
                 </button>
+                <button type="button" className="evx-dash__btn-ghost" onClick={() => handleTest("signoz")}>
+                  Test
+                </button>
+                {byProvider.get("signoz")?.source === "organization" ? (
+                  <button
+                    type="button"
+                    className="evx-dash__btn-ghost"
+                    onClick={async () => {
+                      await removeIntegration.mutateAsync({ organizationId, provider: "signoz" });
+                      setMessage("SigNoz workspace credentials removed — .env fallback will apply.");
+                    }}
+                  >
+                    Remove vault
+                  </button>
+                ) : null}
               </div>
-
-              {generateSignozWebhook.data ? (
-                <>
-                  <dl className="evx-dash__pipeline-cache-meta" style={{ marginTop: "0.5rem" }}>
-                    <div>
-                      <dt>Webhook URL</dt>
-                      <dd>{generateSignozWebhook.data.webhookUrl}</dd>
-                    </div>
-                    <div>
-                      <dt>Basic auth username</dt>
-                      <dd>{generateSignozWebhook.data.webhookUsername}</dd>
-                    </div>
-                    <div>
-                      <dt>Basic auth password</dt>
-                      <dd>{generateSignozWebhook.data.webhookSecret}</dd>
-                    </div>
-                  </dl>
-                  <div className="evx-dash__cause-actions">
-                    <button
-                      type="button"
-                      className="evx-dash__btn-ghost"
-                      onClick={() => void handleCopySignozField("url", generateSignozWebhook.data!.webhookUrl)}
-                    >
-                      {copiedSignozField === "url" ? "Copied!" : "Copy URL"}
-                    </button>
-                    <button
-                      type="button"
-                      className="evx-dash__btn-ghost"
-                      onClick={() =>
-                        void handleCopySignozField("password", generateSignozWebhook.data!.webhookSecret)
-                      }
-                    >
-                      {copiedSignozField === "password" ? "Copied!" : "Copy password"}
-                    </button>
-                  </div>
-                  <p className="evx-dash__stat-note">
-                    Paste these into SigNoz → Settings → Alerts → Notification Channels → add a Webhook
-                    channel with Basic Auth using the URL, username, and password above.
-                  </p>
-                </>
-              ) : byProvider.get("signoz")?.maskedSecrets.webhookSecret ? (
-                <p className="evx-dash__stat-note" style={{ marginTop: "0.5rem" }}>
-                  Password ({byProvider.get("signoz")?.maskedSecrets.webhookSecret}) already generated — click
-                  Rotate to reveal a fresh one for SigNoz's notification channel.
-                </p>
-              ) : null}
             </div>
-          ) : null}
+
+            {byProvider.get("signoz")?.configured ? (
+              <div className="evx-dash__signoz-integration-webhook evx-dash__k8s-plan">
+                <p className="evx-dash__settings-label">Alert webhook (multi-tenant)</p>
+                <p className="evx-dash__stat-note" style={{ marginBottom: "0.5rem" }}>
+                  Generate a workspace-scoped webhook password so SigNoz alerts route straight to this
+                  workspace — no shared secret, no re-pointing <code>INVESTIGATION_OWNER_EMAIL</code> per
+                  tenant.
+                </p>
+                <div className="evx-dash__cause-actions">
+                  <button
+                    type="button"
+                    className="evx-dash__btn-primary"
+                    disabled={!organizationId || generateSignozWebhook.isPending}
+                    onClick={() =>
+                      organizationId &&
+                      generateSignozWebhook.mutate({
+                        organizationId,
+                        // First click reveals (or creates) the secret; subsequent clicks rotate it.
+                        rotateSecret: Boolean(generateSignozWebhook.data),
+                      })
+                    }
+                  >
+                    {generateSignozWebhook.isPending
+                      ? "Generating…"
+                      : generateSignozWebhook.data
+                        ? "Rotate webhook password"
+                        : byProvider.get("signoz")?.maskedSecrets.webhookSecret
+                          ? "Reveal webhook credentials"
+                          : "Generate webhook credentials"}
+                  </button>
+                </div>
+
+                {generateSignozWebhook.data ? (
+                  <>
+                    <dl className="evx-dash__pipeline-cache-meta evx-dash__webhook-creds-meta">
+                      <div>
+                        <dt>Webhook URL</dt>
+                        <dd>{generateSignozWebhook.data.webhookUrl}</dd>
+                      </div>
+                      <div>
+                        <dt>Basic auth username</dt>
+                        <dd>{generateSignozWebhook.data.webhookUsername}</dd>
+                      </div>
+                      <div>
+                        <dt>Basic auth password</dt>
+                        <dd>{generateSignozWebhook.data.webhookSecret}</dd>
+                      </div>
+                    </dl>
+                    <div className="evx-dash__cause-actions">
+                      <button
+                        type="button"
+                        className="evx-dash__btn-ghost"
+                        onClick={() => void handleCopySignozField("url", generateSignozWebhook.data!.webhookUrl)}
+                      >
+                        {copiedSignozField === "url" ? "Copied!" : "Copy URL"}
+                      </button>
+                      <button
+                        type="button"
+                        className="evx-dash__btn-ghost"
+                        onClick={() =>
+                          void handleCopySignozField("password", generateSignozWebhook.data!.webhookSecret)
+                        }
+                      >
+                        {copiedSignozField === "password" ? "Copied!" : "Copy password"}
+                      </button>
+                    </div>
+                    <p className="evx-dash__stat-note">
+                      Paste these into SigNoz → Settings → Alerts → Notification Channels → add a Webhook
+                      channel with Basic Auth using the URL, username, and password above.
+                    </p>
+                  </>
+                ) : byProvider.get("signoz")?.maskedSecrets.webhookSecret ? (
+                  <p className="evx-dash__stat-note" style={{ marginTop: "0.5rem" }}>
+                    Password ({byProvider.get("signoz")?.maskedSecrets.webhookSecret}) already generated — click
+                    Rotate to reveal a fresh one for SigNoz&apos;s notification channel.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </article>
 
         <article className="evx-dash__settings-card evx-dash__github-integration-card">

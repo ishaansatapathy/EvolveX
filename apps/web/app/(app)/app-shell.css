@@ -1721,6 +1721,65 @@
   color: rgba(240, 240, 235, 0.78);
 }
 
+.evx-dash__signoz-integration-card {
+  grid-column: 1 / -1;
+}
+
+.evx-dash__signoz-integration-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 1rem 1.5rem;
+  align-items: start;
+}
+
+.evx-dash__signoz-integration-body--single {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 42rem;
+}
+
+.evx-dash__signoz-connect-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 0.85rem;
+}
+
+.evx-dash__signoz-connect-fields__full {
+  grid-column: 1 / -1;
+}
+
+.evx-dash__signoz-integration-webhook {
+  margin-top: 0;
+  height: 100%;
+}
+
+.evx-dash__webhook-creds-meta {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 0.75fr) minmax(0, 2fr);
+}
+
+.evx-dash__webhook-creds-meta dd {
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 899px) {
+  .evx-dash__signoz-integration-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evx-dash__webhook-creds-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .evx-dash__signoz-connect-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+
 .evx-dash__github-integration-card {
   grid-column: 1 / -1;
 }
