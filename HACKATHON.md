@@ -1,5 +1,8 @@
 # Evolvex × SigNoz — hackathon judging guide
 
+> **Note:** AI Assistants Used: ChatGPT and Cursor AI for development assistance, debugging, and
+> documentation. Final implementation was completed by me.
+
 Evolvex is not "a dashboard that reads SigNoz." It is an **investigation OS built directly on top of
 SigNoz's data plane** — every signal Evolvex correlates (traces, logs, metrics, alerts, service maps,
 eBPF) comes from SigNoz, live, with zero mock data anywhere in the product (see

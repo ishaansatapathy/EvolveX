@@ -1,5 +1,8 @@
 # Evolvex
 
+> **Note:** AI Assistants Used: ChatGPT and Cursor AI for development assistance, debugging, and
+> documentation. Final implementation was completed by me.
+
 **AI-powered, multi-tenant Investigation OS** on top of SigNoz. Correlates alerts, traces, logs, deploys, Kubernetes events, eBPF signals, feature-flag toggles, and CI/CD pipeline stages into a single incident context stored in PostgreSQL — every workspace/organization isolated with its own encrypted integration vault and scoped webhook secrets.
 
 ## Architecture
