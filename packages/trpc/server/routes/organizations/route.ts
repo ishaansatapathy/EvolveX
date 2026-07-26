@@ -14,6 +14,7 @@ import {
   upsertSignozIntegration,
   upsertSlackIntegration,
   generateKubernetesOnboarding,
+  generateSignozWebhookOnboarding,
   generateWebhookSignalOnboarding,
   type WebhookSignalProvider,
 } from "@repo/services/organization/integrations";
@@ -357,6 +358,42 @@ export const organizationsRouter = router({
             : await ensureUserOrganization(ctx.user.id);
           return generateKubernetesOnboarding(ctx.user.id, organization.id, {
             clusterName: input.clusterName,
+            rotateSecret: input.rotateSecret,
+          });
+        } catch (error) {
+          mapServiceError(error);
+        }
+      }),
+
+    /**
+     * Self-service SigNoz alert-webhook onboarding — generates (or rotates) a workspace-scoped
+     * Basic-auth password so alerts from SigNoz's notification channel route straight to this
+     * organization via the indexed `secret_hash` lookup, instead of every case landing wherever
+     * `INVESTIGATION_OWNER_EMAIL` points. Requires SigNoz cloud URL + API key to already be saved.
+     */
+    generateSignozWebhookOnboarding: protectedProcedure
+      .input(
+        z.object({
+          organizationId: z.string().uuid().optional(),
+          rotateSecret: z.boolean().optional(),
+        }),
+      )
+      .output(
+        z.object({
+          webhookUrl: z.string(),
+          webhookUsername: z.string(),
+          webhookSecret: z.string(),
+          maskedWebhookSecret: z.string().nullable(),
+          configured: z.boolean(),
+          source: z.literal("organization"),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const organization = input.organizationId
+            ? { id: input.organizationId }
+            : await ensureUserOrganization(ctx.user.id);
+          return generateSignozWebhookOnboarding(ctx.user.id, organization.id, {
             rotateSecret: input.rotateSecret,
           });
         } catch (error) {

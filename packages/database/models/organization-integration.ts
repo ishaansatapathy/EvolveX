@@ -17,8 +17,13 @@ export const organizationIntegrationProviders = [
 ] as const;
 export type OrganizationIntegrationProvider = (typeof organizationIntegrationProviders)[number];
 
-/** Providers authenticated by a single shared-secret webhook (vs. OAuth/API-key providers above). */
-export const webhookSecretProviders = ["kubernetes", "ebpf", "feature_flag", "cicd"] as const;
+/**
+ * Providers authenticated by a single shared-secret webhook (vs. OAuth/API-key providers above).
+ * `signoz` joined this list so alert-webhook routing can resolve the owning workspace from an
+ * indexed secret hash instead of always falling back to the single global
+ * `INVESTIGATION_OWNER_EMAIL` — see ADR-005 amendment and `resolveOrganizationIdForWebhookSecret`.
+ */
+export const webhookSecretProviders = ["kubernetes", "ebpf", "feature_flag", "cicd", "signoz"] as const;
 export type WebhookSecretProvider = (typeof webhookSecretProviders)[number];
 
 export const organizationIntegrationsTable = pgTable(
@@ -32,7 +37,7 @@ export const organizationIntegrationsTable = pgTable(
     config: jsonb("config").$type<Record<string, unknown>>().default({}).notNull(),
     secretsEncrypted: text("secrets_encrypted").notNull(),
     /**
-     * SHA-256 hex of the current webhook secret (kubernetes/ebpf/feature_flag/cicd only) — lets an
+     * SHA-256 hex of the current webhook secret (kubernetes/ebpf/feature_flag/cicd/signoz) — lets an
      * inbound webhook resolve its owning organization with an indexed lookup instead of decrypting
      * every row in the table (O(1) vs O(n), required once you have >dozens of tenants).
      */

@@ -42,9 +42,12 @@ import { attachTelemetryIntelligenceSnapshot } from "./vectors/telemetry-vectors
 export class TelemetryIntelligenceOrchestrator {
   constructor(private readonly investigationHandler: SignozWebhookHandler) {}
 
-  async handleSignozWebhook(payload: SignozWebhookPayload) {
-    const ownerUserId = await resolveInvestigationOwnerUserId();
-    const organizationId = await resolveOrganizationForUser(ownerUserId);
+  async handleSignozWebhook(payload: SignozWebhookPayload, options?: { organizationId?: string | null }) {
+    // Per-workspace secret resolves the org directly; null/undefined falls back to the global
+    // INVESTIGATION_OWNER_EMAIL workspace (legacy single-tenant / local-dev path).
+    const organizationId =
+      options?.organizationId ??
+      (await resolveOrganizationForUser(await resolveInvestigationOwnerUserId()));
     const snapshotsByFingerprint = new Map<string, TelemetryIntelligenceSnapshot>();
 
     for (const alert of payload.alerts) {
@@ -59,7 +62,7 @@ export class TelemetryIntelligenceOrchestrator {
       snapshotsByFingerprint.set(fingerprint, snapshot);
     }
 
-    const result = await this.investigationHandler(payload);
+    const result = await this.investigationHandler(payload, { organizationId });
 
     for (const investigationId of result.investigationIds) {
       const [row] = await db

@@ -56,6 +56,11 @@ export function OrganizationIntegrationsPanel({
       await utils.integrations.health.invalidate();
     },
   });
+  const generateSignozWebhook = trpc.organizations.integrations.generateSignozWebhookOnboarding.useMutation({
+    onSuccess: async () => {
+      await utils.organizations.integrations.list.invalidate();
+    },
+  });
   const upsertGithub = trpc.organizations.integrations.upsertGithub.useMutation({
     onSuccess: async () => {
       await utils.organizations.integrations.list.invalidate();
@@ -129,6 +134,7 @@ export function OrganizationIntegrationsPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [copiedSignozField, setCopiedSignozField] = useState<string | null>(null);
   const [githubTesting, setGithubTesting] = useState(false);
   const [githubStatus, setGithubStatus] = useState<{
     tone: "success" | "error";
@@ -213,6 +219,12 @@ export function OrganizationIntegrationsPanel({
     await navigator.clipboard.writeText(githubWebhookUrl);
     setCopiedWebhook(true);
     setTimeout(() => setCopiedWebhook(false), 1500);
+  }
+
+  async function handleCopySignozField(label: string, value: string) {
+    await navigator.clipboard.writeText(value);
+    setCopiedSignozField(label);
+    setTimeout(() => setCopiedSignozField(null), 1500);
   }
 
   function notify(text: string, tone: "info" | "success" | "error" = "success") {
@@ -318,6 +330,86 @@ export function OrganizationIntegrationsPanel({
               </button>
             ) : null}
           </div>
+
+          {byProvider.get("signoz")?.configured ? (
+            <div className="evx-dash__k8s-plan" style={{ marginTop: "0.75rem" }}>
+              <p className="evx-dash__settings-label">Alert webhook (multi-tenant)</p>
+              <p className="evx-dash__stat-note" style={{ marginBottom: "0.5rem" }}>
+                Generate a workspace-scoped webhook password so SigNoz alerts route straight to this
+                workspace — no shared secret, no re-pointing <code>INVESTIGATION_OWNER_EMAIL</code> per
+                tenant.
+              </p>
+              <div className="evx-dash__cause-actions">
+                <button
+                  type="button"
+                  className="evx-dash__btn-primary"
+                  disabled={!organizationId || generateSignozWebhook.isPending}
+                  onClick={() =>
+                    organizationId &&
+                    generateSignozWebhook.mutate({
+                      organizationId,
+                      // First click reveals (or creates) the secret; subsequent clicks rotate it.
+                      rotateSecret: Boolean(generateSignozWebhook.data),
+                    })
+                  }
+                >
+                  {generateSignozWebhook.isPending
+                    ? "Generating…"
+                    : generateSignozWebhook.data
+                      ? "Rotate webhook password"
+                      : byProvider.get("signoz")?.maskedSecrets.webhookSecret
+                        ? "Reveal webhook credentials"
+                        : "Generate webhook credentials"}
+                </button>
+              </div>
+
+              {generateSignozWebhook.data ? (
+                <>
+                  <dl className="evx-dash__pipeline-cache-meta" style={{ marginTop: "0.5rem" }}>
+                    <div>
+                      <dt>Webhook URL</dt>
+                      <dd>{generateSignozWebhook.data.webhookUrl}</dd>
+                    </div>
+                    <div>
+                      <dt>Basic auth username</dt>
+                      <dd>{generateSignozWebhook.data.webhookUsername}</dd>
+                    </div>
+                    <div>
+                      <dt>Basic auth password</dt>
+                      <dd>{generateSignozWebhook.data.webhookSecret}</dd>
+                    </div>
+                  </dl>
+                  <div className="evx-dash__cause-actions">
+                    <button
+                      type="button"
+                      className="evx-dash__btn-ghost"
+                      onClick={() => void handleCopySignozField("url", generateSignozWebhook.data!.webhookUrl)}
+                    >
+                      {copiedSignozField === "url" ? "Copied!" : "Copy URL"}
+                    </button>
+                    <button
+                      type="button"
+                      className="evx-dash__btn-ghost"
+                      onClick={() =>
+                        void handleCopySignozField("password", generateSignozWebhook.data!.webhookSecret)
+                      }
+                    >
+                      {copiedSignozField === "password" ? "Copied!" : "Copy password"}
+                    </button>
+                  </div>
+                  <p className="evx-dash__stat-note">
+                    Paste these into SigNoz → Settings → Alerts → Notification Channels → add a Webhook
+                    channel with Basic Auth using the URL, username, and password above.
+                  </p>
+                </>
+              ) : byProvider.get("signoz")?.maskedSecrets.webhookSecret ? (
+                <p className="evx-dash__stat-note" style={{ marginTop: "0.5rem" }}>
+                  Password ({byProvider.get("signoz")?.maskedSecrets.webhookSecret}) already generated — click
+                  Rotate to reveal a fresh one for SigNoz's notification channel.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </article>
 
         <article className="evx-dash__settings-card evx-dash__github-integration-card">

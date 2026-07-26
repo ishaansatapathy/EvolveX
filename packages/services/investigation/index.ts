@@ -55,7 +55,7 @@ import { correlateFeatureFlagEvent } from "./feature-flag-correlation";
 import { correlateGithubDeployPush } from "./github-deploy-correlation";
 import { correlateKubernetesEvent } from "./kubernetes-event-correlation";
 import { resolveInvestigationOwnerUserId } from "./owner";
-import { resolveOrganizationForUser } from "../organization";
+import { resolveOrganizationForUser, resolveOrganizationOwnerUserId } from "../organization";
 import {
   isSignozConfiguredForOrganization,
   resolveGithubToken,
@@ -532,19 +532,36 @@ class InvestigationService {
     };
   }
 
-  async handleSignozWebhook(payload: SignozWebhookPayload): Promise<{ investigationIds: string[] }> {
+  async handleSignozWebhook(
+    payload: SignozWebhookPayload,
+    options?: { organizationId?: string | null },
+  ): Promise<{ investigationIds: string[] }> {
     const investigationIds: string[] = [];
-    const ownerUserId = await resolveInvestigationOwnerUserId();
-    const organizationId = await resolveOrganizationForUser(ownerUserId);
+    const globalOwnerUserId = await resolveInvestigationOwnerUserId();
+
+    // Per-workspace Basic-auth password (ADR-005) resolves organizationId directly and attributes
+    // the case to that org's owner. Null/undefined (legacy global SIGNOZ_WEBHOOK_SECRET, or
+    // unauthenticated local/dev) falls back to INVESTIGATION_OWNER_EMAIL → that user's org.
+    const organizationId =
+      options?.organizationId ?? (await resolveOrganizationForUser(globalOwnerUserId));
+    const ownerUserId = options?.organizationId
+      ? ((await resolveOrganizationOwnerUserId(options.organizationId)) ?? globalOwnerUserId)
+      : globalOwnerUserId;
 
     for (const alert of payload.alerts) {
       const fingerprint = alert.fingerprint ?? `${alert.labels.alertname ?? "alert"}-${alert.startsAt}`;
       const resolved = isResolvedAlert(payload, alert);
 
+      // Scoped by organization (when known) so two workspaces sharing one SigNoz instance can
+      // never collide on the same alert fingerprint and attach to each other's case.
       const [existing] = await db
         .select()
         .from(investigationsTable)
-        .where(eq(investigationsTable.externalId, fingerprint))
+        .where(
+          organizationId
+            ? and(eq(investigationsTable.externalId, fingerprint), eq(investigationsTable.organizationId, organizationId))
+            : eq(investigationsTable.externalId, fingerprint),
+        )
         .limit(1);
 
       if (resolved) {

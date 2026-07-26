@@ -52,9 +52,9 @@ Two isolation mechanisms, matched to the integration type (see [ADR-0005](./adr/
 
 | Integration type | Isolation mechanism |
 |---|---|
-| SigNoz, GitHub, Slack, PagerDuty, Jira (per-workspace API key/token) | AES-256-GCM encrypted secret in `organization_integrations`, resolved by `organizationId` |
-| Kubernetes, eBPF, feature-flag, CI/CD (shared-secret webhooks) | Per-workspace secret + indexed `secret_hash` (SHA-256) column — an inbound webhook resolves its owning org in O(1) without decrypting every row. Rotation keeps `previous_secret_hash` valid for 24h so in-flight agents/CI runners never hard-fail mid-rotation |
-| Legacy/dev/single-tenant | Global `*_WEBHOOK_SECRET` env var — only used when a workspace hasn't connected via Settings |
+| SigNoz API, GitHub, Slack, PagerDuty, Jira (per-workspace API key/token) | AES-256-GCM encrypted secret in `organization_integrations`, resolved by `organizationId` |
+| SigNoz alerts, Kubernetes, eBPF, feature-flag, CI/CD (shared-secret webhooks) | Per-workspace secret + indexed `secret_hash` (SHA-256) column — an inbound webhook resolves its owning org in O(1) without decrypting every row. Rotation keeps `previous_secret_hash` valid for 24h so in-flight agents/CI runners never hard-fail mid-rotation. SigNoz uses Basic-auth password as the secret |
+| Legacy/dev/single-tenant | Global `*_WEBHOOK_SECRET` / `INVESTIGATION_OWNER_EMAIL` — only used when a workspace hasn't connected via Settings |
 
 Resolution order everywhere is **workspace vault → environment fallback**, never the reverse — a connected
 workspace's own secret always wins.
@@ -103,15 +103,19 @@ workspace's own secret always wins.
 DATABASE_URL=
 JWT_SECRET=
 JWT_REFRESH_SECRET=
-INVESTIGATION_OWNER_EMAIL=
 SIGNOZ_CLOUD_URL=
 SIGNOZ_API_KEY=
-SIGNOZ_WEBHOOK_SECRET=
 GITHUB_WEBHOOK_SECRET=
 OPENAI_API_KEY=
 
 # Multi-tenant vault encryption (falls back to JWT_SECRET in dev only)
 INTEGRATION_SECRETS_KEY=
+
+# Preferred SigNoz alert routing: Settings → Connect SigNoz → Generate webhook credentials
+# (per-workspace Basic-auth password, indexed secret_hash lookup — see ADR-005).
+# These two remain single-tenant/dev fallbacks only:
+# INVESTIGATION_OWNER_EMAIL=
+# SIGNOZ_WEBHOOK_SECRET=
 
 # Single-tenant/dev fallback secrets — a connected workspace's own vault secret
 # always takes priority over these (see Multi-Tenancy Model above)

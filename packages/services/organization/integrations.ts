@@ -43,7 +43,11 @@ import { organizationRoleAllows } from "./permissions";
 /** 24h grace window — rotating a webhook secret never causes a hard outage for in-flight agents/CI runners. */
 const SECRET_ROTATION_GRACE_MS = 24 * 60 * 60 * 1000;
 
-export type WebhookSignalProvider = Exclude<WebhookSecretProvider, "kubernetes">;
+/**
+ * Signal-webhook providers that get the generic "Connect" UI (secret + curl example, no
+ * bespoke config like SigNoz's cloudUrl/apiKey or Kubernetes's Helm command).
+ */
+export type WebhookSignalProvider = Exclude<WebhookSecretProvider, "kubernetes" | "signoz">;
 
 export const WEBHOOK_SIGNAL_META: Record<
   WebhookSignalProvider,
@@ -394,7 +398,74 @@ export async function upsertSignozIntegration(
     defaultServiceName: input.defaultServiceName?.trim() || getDefaultServiceName(),
   };
 
-  await saveIntegration(userId, organizationId, "signoz", config, secrets, "integration.signoz.upsert");
+  // Uses the hash-indexed save path (not plain `saveIntegration`) so this workspace's alert
+  // webhook secret — whether typed here or generated later via `generateSignozWebhookOnboarding`
+  // — is resolvable in O(1) by `resolveOrganizationIdForWebhookSecret("signoz", secret)`.
+  await saveIntegrationWithSecretHash(userId, organizationId, "signoz", config, secrets, "integration.signoz.upsert");
+}
+
+export type SignozWebhookOnboardingResult = {
+  webhookUrl: string;
+  webhookUsername: string;
+  webhookSecret: string;
+  maskedWebhookSecret: string | null;
+  configured: boolean;
+  source: "organization";
+};
+
+/**
+ * Self-service SigNoz alert-webhook onboarding: generates (or returns/rotates) a workspace-scoped
+ * Basic-auth password so alerts route straight to this organization via the indexed `secret_hash`
+ * lookup — the same pattern Kubernetes/eBPF/CI-CD webhooks use — instead of every case landing in
+ * whichever workspace owns the single global `INVESTIGATION_OWNER_EMAIL`. Requires SigNoz cloud
+ * URL + API key to already be saved (`upsertSignozIntegration`).
+ */
+export async function generateSignozWebhookOnboarding(
+  userId: string,
+  organizationId: string,
+  input?: { rotateSecret?: boolean },
+): Promise<SignozWebhookOnboardingResult> {
+  await assertOrganizationOwner(userId, organizationId);
+
+  const existing = await loadIntegrationRow(organizationId, "signoz");
+  if (!existing) {
+    throw serviceError(
+      "BAD_REQUEST",
+      "Save SigNoz cloud URL and API key first, then generate webhook credentials",
+    );
+  }
+
+  const existingSecrets = decryptRowSecrets(existing);
+  const hasExistingSecret =
+    typeof existingSecrets.webhookSecret === "string" && existingSecrets.webhookSecret.trim();
+
+  let webhookSecret: string;
+  if (input?.rotateSecret && hasExistingSecret) {
+    webhookSecret = await rotateWebhookSecretProvider(userId, organizationId, "signoz");
+  } else if (hasExistingSecret) {
+    webhookSecret = String(existingSecrets.webhookSecret);
+  } else {
+    webhookSecret = generateKubernetesWebhookSecret();
+    await saveIntegrationWithSecretHash(
+      userId,
+      organizationId,
+      "signoz",
+      existing.config ?? {},
+      { ...existingSecrets, webhookSecret },
+      "integration.signoz.webhook_onboard",
+    );
+  }
+
+  const baseUrl = getIntegrationBaseUrl().replace(/\/+$/, "");
+
+  return {
+    webhookUrl: `${baseUrl}/webhooks/signoz`,
+    webhookUsername: "evolvex",
+    webhookSecret,
+    maskedWebhookSecret: maskSecret(webhookSecret),
+    configured: true,
+    source: "organization",
+  };
 }
 
 export async function upsertGithubIntegration(

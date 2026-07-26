@@ -11,7 +11,7 @@ Use this after `pnpm dev` when Settings shows partial integrations.
 | `SIGNOZ_INGESTION_KEY` | SigNoz → Settings → Ingestion | OTel self-instrumentation |
 | `OPENAI_API_KEY` | platform.openai.com | AI root-cause summary |
 | `DATABASE_URL` | Neon dashboard (pooled URL) | Investigations persist |
-| `INVESTIGATION_OWNER_EMAIL` | Your login email | Webhook-created cases assign to you |
+| `INVESTIGATION_OWNER_EMAIL` | Your login email | Legacy fallback for webhook cases when no per-workspace SigNoz webhook secret is used |
 
 ## 2. Auto investigations + deploy correlation (~15 min)
 
@@ -40,11 +40,17 @@ BASE_URL=https://your-tunnel.loca.lt
 SIGNOZ_WEBHOOK_PUBLIC_URL=https://your-tunnel.loca.lt/webhooks/signoz
 ```
 
-### SigNoz alert webhook
+### SigNoz alert webhook (preferred: per-workspace)
 
-SigNoz → Notification Channels → Webhook → URL:
+1. Settings → Connect SigNoz (save cloud URL + API key)
+2. Click **Generate webhook credentials**
+3. SigNoz → Notification Channels → Webhook → paste the URL, Basic-auth username (`evolvex`), and password
 
-`https://your-tunnel.loca.lt/webhooks/signoz`
+Each workspace gets its own password (indexed `secret_hash` lookup) so alerts route to that tenant —
+no need to change `INVESTIGATION_OWNER_EMAIL` per user. See [ADR-005](./adr/0005-org-integration-vault.md).
+
+Legacy single-tenant fallback: set `SIGNOZ_WEBHOOK_SECRET` in `.env` and use the same password in
+SigNoz Basic Auth; cases then assign via `INVESTIGATION_OWNER_EMAIL`.
 
 ### GitHub push webhook
 

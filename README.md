@@ -90,10 +90,11 @@ SSL and pool sizing for Neon are handled automatically in `packages/database/pg.
 
 ## SigNoz integration
 
-1. Set `SIGNOZ_CLOUD_URL`, `SIGNOZ_API_KEY`, `SIGNOZ_INGESTION_KEY` in `.env`
-2. Create alert in SigNoz (e.g. p99 latency > 800ms for `payments-svc`)
-3. Add webhook notification channel pointing to `https://<your-api>/webhooks/signoz`
-4. Set `SIGNOZ_WEBHOOK_SECRET` and configure the same secret in SigNoz
+1. Settings → Connect SigNoz (cloud URL + API key), or set `SIGNOZ_*` in `.env` for single-tenant demos
+2. Click **Generate webhook credentials** and copy the URL + Basic-auth password
+3. Create a SigNoz alert (e.g. p99 latency > 800ms for `payments-svc`) and point its Notification
+   Channel webhook at those credentials — cases route to *your* workspace automatically
+4. Legacy single-tenant fallback: `SIGNOZ_WEBHOOK_SECRET` + `INVESTIGATION_OWNER_EMAIL` still work
 
 ## Webhooks
 
@@ -110,10 +111,10 @@ SSL and pool sizing for Neon are handled automatically in `packages/database/pg.
 | `POST /api/v1/sdk/*` | Evolvex SDK — server-side event ingestion (Bearer `EVOLVEX_API_KEY`) |
 | `POST /telemetry-intelligence/*` | Collector agent sampling policy sync (Bearer `EVOLVEX_COLLECTOR_KEY`) |
 
-Kubernetes, eBPF, feature-flag, and CI/CD webhooks are **multi-tenant**: each workspace gets its own
-scoped secret from Settings → *Connect signal webhooks* (indexed `secret_hash` lookup, 24h dual-secret
-rotation window). The `*_WEBHOOK_SECRET` env vars are only a single-tenant/dev fallback — see
-[docs/adr/0005-org-integration-vault.md](./docs/adr/0005-org-integration-vault.md).
+SigNoz, Kubernetes, eBPF, feature-flag, and CI/CD webhooks are **multi-tenant**: each workspace gets
+its own scoped secret from Settings (indexed `secret_hash` lookup, 24h dual-secret rotation window).
+The `*_WEBHOOK_SECRET` / `INVESTIGATION_OWNER_EMAIL` env vars are only a single-tenant/dev fallback —
+see [docs/adr/0005-org-integration-vault.md](./docs/adr/0005-org-integration-vault.md).
 
 ## API docs
 

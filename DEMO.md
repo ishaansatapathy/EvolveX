@@ -77,7 +77,7 @@ every integration there is connected from the browser — paste a key, or "Add t
 
 | Issue | Fix |
 |-------|-----|
-| No investigations | Check webhook URL + `SIGNOZ_WEBHOOK_SECRET` + `INVESTIGATION_OWNER_EMAIL` — see [WIRING.md](./docs/WIRING.md) |
+| No investigations | Settings → Connect SigNoz → Generate webhook credentials, then paste URL + Basic auth into SigNoz Notification Channels — see [WIRING.md](./docs/WIRING.md) |
 | Integration health partial | Settings → copy webhook URLs, set missing secrets |
 | Empty traces page | Run `pnpm signoz:loadgen` or use the app (OTel on API) |
 | No AI summary | Set `OPENAI_API_KEY`, click Generate summary |

@@ -113,6 +113,29 @@ export async function resolveOrganizationForUser(userId: string | null): Promise
   return organization.id;
 }
 
+/**
+ * Resolves the owning user for an organization directly (earliest-created "owner" member) —
+ * used to attribute investigations/cases when a webhook resolves its organization from a
+ * per-org secret (see ADR-005 amendment) rather than the single global
+ * `INVESTIGATION_OWNER_EMAIL`. Every organization has exactly one owner at creation time via
+ * `ensureUserOrganization`; this tolerates multiple just in case ownership is ever transferred.
+ */
+export async function resolveOrganizationOwnerUserId(organizationId: string): Promise<string | null> {
+  const [owner] = await db
+    .select({ userId: organizationMembersTable.userId })
+    .from(organizationMembersTable)
+    .where(
+      and(
+        eq(organizationMembersTable.organizationId, organizationId),
+        eq(organizationMembersTable.role, "owner"),
+      ),
+    )
+    .orderBy(organizationMembersTable.createdAt)
+    .limit(1);
+
+  return owner?.userId ?? null;
+}
+
 export async function listUserOrganizations(userId: string): Promise<OrganizationSummary[]> {
   await ensureUserOrganization(userId);
 

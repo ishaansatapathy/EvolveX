@@ -97,4 +97,14 @@ describe("resolveOrganizationIdForWebhookSecret", () => {
     expect(JSON.stringify(whereCall)).not.toContain(secret);
     expect(JSON.stringify(whereCall)).toContain(hashWebhookSecret(secret));
   });
+
+  it("resolves SigNoz alert-webhook secrets the same way as kubernetes/eBPF (multi-tenant routing)", async () => {
+    dbMock.select.mockReturnValueOnce(mockSelectChain([{ organizationId: "org-signoz-tenant" }]));
+
+    const result = await resolveOrganizationIdForWebhookSecret("signoz", "whsec_signoz_tenant");
+
+    expect(result).toBe("org-signoz-tenant");
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
 });
+

@@ -487,14 +487,13 @@ export default function InvestigationsPageContent() {
           <p className="evx-dash__stat-note" style={{ marginTop: "0.75rem" }}>
             Production path:
             <br />
-            1. Configure <code>SIGNOZ_WEBHOOK_SECRET</code> and expose <code>POST /webhooks/signoz</code> (see{" "}
-            <code>docs/WIRING.md</code>)
+            1. Open <Link href="/settings">Settings</Link> → Connect SigNoz (cloud URL + API key)
             <br />
-            2. Register the webhook URL in SigNoz Notification Channels
+            2. Click <strong>Generate webhook credentials</strong> and copy the URL + Basic-auth password
             <br />
-            3. Verify integration health on <Link href="/settings">Settings</Link>
+            3. Paste them into SigNoz → Alerts → Notification Channels (Webhook + Basic Auth)
             <br />
-            4. Set <code>INVESTIGATION_OWNER_EMAIL</code> to your authenticated workspace email
+            4. Fire an alert — cases route to <em>this</em> workspace automatically (no shared owner email)
           </p>
           <div className="evx-dash__cause-actions" style={{ marginTop: "1rem" }}>
             <button

@@ -96,4 +96,5 @@ export type TelemetryIntelligenceConfig = {
 
 export type SignozWebhookHandler = (
   payload: SignozWebhookPayload,
+  options?: { organizationId?: string | null },
 ) => Promise<{ investigationIds: string[] }>;
