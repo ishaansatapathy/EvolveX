@@ -1,6 +1,6 @@
 # Evolvex
 
-**AI-powered Investigation OS** on top of SigNoz. Correlates alerts, traces, logs, deploys, Kubernetes events, and eBPF signals into a single incident context stored in PostgreSQL.
+**AI-powered, multi-tenant Investigation OS** on top of SigNoz. Correlates alerts, traces, logs, deploys, Kubernetes events, eBPF signals, feature-flag toggles, and CI/CD pipeline stages into a single incident context stored in PostgreSQL — every workspace/organization isolated with its own encrypted integration vault and scoped webhook secrets.
 
 ## Architecture
 
@@ -98,8 +98,27 @@ SSL and pool sizing for Neon are handled automatically in `packages/database/pg.
 |----------|--------|
 | `POST /webhooks/signoz` | SigNoz alerts |
 | `POST /webhooks/github` | GitHub push (HMAC verified) |
-| `POST /webhooks/kubernetes` | K8s event exporter |
+| `POST /webhooks/kubernetes` | K8s event exporter / ArgoCD / Flux |
 | `POST /webhooks/ebpf` | Cilium Hubble / Pixie / OBI bridge / custom agent |
+| `POST /webhooks/feature-flags` | LaunchDarkly / Flagsmith / OpenFeature flag toggles |
+| `POST /webhooks/cicd` | GitHub Actions / CircleCI / Jenkins pipeline stages |
+| `POST /webhooks/plugins` | Third-party plugin custom events (Settings → Plugins) |
+| `POST /integrations/slack/*` | Slack "Add to Slack" OAuth callback |
+| `POST /api/v1/sdk/*` | Evolvex SDK — server-side event ingestion (Bearer `EVOLVEX_API_KEY`) |
+| `POST /telemetry-intelligence/*` | Collector agent sampling policy sync (Bearer `EVOLVEX_COLLECTOR_KEY`) |
+
+Kubernetes, eBPF, feature-flag, and CI/CD webhooks are **multi-tenant**: each workspace gets its own
+scoped secret from Settings → *Connect signal webhooks* (indexed `secret_hash` lookup, 24h dual-secret
+rotation window). The `*_WEBHOOK_SECRET` env vars are only a single-tenant/dev fallback — see
+[docs/adr/0005-org-integration-vault.md](./docs/adr/0005-org-integration-vault.md).
+
+## API docs
+
+- `GET /openapi.json` — full OpenAPI 3 document generated from the tRPC router (`trpc-to-openapi`) —
+  every procedure with `.meta({ openapi: ... })` is both an RPC call under `/trpc` and a plain REST route
+  under `/api`.
+- `GET /health` — liveness (DB ping only).
+- `GET /health/deep` — dependency-aware health (SigNoz, Redis, OpenAI, DB pool) used by `pnpm deploy:smoke`.
 
 ## Telemetry (dogfooding)
 
@@ -124,6 +143,19 @@ pnpm obi:up             # OBI eBPF demo (Docker Linux only) → SigNoz OTLP
 pnpm obi:bridge         # Poll OBI metrics in SigNoz → Evolvex eBPF webhook
 pnpm db:seed          # Seed auth demo user
 ```
+
+### Production ops scripts
+
+```bash
+pnpm wiring:secrets     # Generate random values for every *_WEBHOOK_SECRET / JWT_SECRET
+pnpm wiring:check       # Verify required env vars + live connectivity before deploy
+pnpm deploy:preflight   # Pre-deploy checklist (migrations pending, secrets set, build passes)
+pnpm deploy:smoke       # Post-deploy smoke test against /health/deep on a live URL
+pnpm deploy:check       # Combined preflight + smoke, used in CI/CD gates
+pnpm org:backfill       # Backfill organization_id on rows created before multi-tenancy shipped
+```
+
+See [docs/adr/0008-production-deploy-automation.md](./docs/adr/0008-production-deploy-automation.md).
 
 ### Self-service integrations (no repo cloning, no manual webhook hunting)
 

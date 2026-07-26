@@ -68,14 +68,25 @@ GITHUB_TOKEN=ghp_...   # scopes: repo (read)
 2. Test buttons: SigNoz API, Database, GitHub, OpenAI
 3. Fire alert: `pnpm signoz:p99` or seed: `pnpm investigation:seed`
 4. Open `/investigations` → timeline, narrative, completeness, postmortem export
+5. From an investigation's **Export** menu, try **Create SigNoz dashboard** — opens a live 3-widget
+   dashboard scoped to the case's service (needs an Editor/Admin `SIGNOZ_API_KEY`, not Viewer)
 
 ## Optional
 
 | Variable | Purpose |
 |----------|---------|
-| `KUBERNETES_WEBHOOK_SECRET` | Cluster change events |
+| `KUBERNETES_WEBHOOK_SECRET` | Cluster change events (single-tenant/dev fallback — prefer Settings → Connect signal webhooks for a real workspace secret) |
 | `EBPF_WEBHOOK_SECRET` | Direct eBPF webhook path |
+| `FEATURE_FLAG_WEBHOOK_SECRET` | LaunchDarkly/Flagsmith flag-toggle webhook path — try with `pnpm feature-flag:webhook-demo` |
+| `CICD_WEBHOOK_SECRET` | GitHub Actions/CircleCI/Jenkins pipeline-stage webhook path — try with `pnpm cicd:webhook-demo` |
+| `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` | Self-service "Add to Slack" OAuth button in Settings (skip to use manual `SLACK_WEBHOOK_URL` paste instead) |
+| `REDIS_URL` | Distributed rate limiting across multiple API instances |
 | `pnpm obi:up` | OBI demo → SigNoz OTLP |
 | `.cursor/mcp.json` | Query SigNoz from Cursor/Claude/Codex — see [SIGNOZ-MCP.md](./SIGNOZ-MCP.md) |
 
-See also: [DEMO.md](../DEMO.md), [EBPF-OBI.md](./EBPF-OBI.md), [SIGNOZ-MCP.md](./SIGNOZ-MCP.md), [../HACKATHON.md](../HACKATHON.md)
+Prefer connecting per-workspace instead of env vars where possible: Settings → **Connect integrations** /
+**Connect signal webhooks** issues scoped secrets with rotation, so no shared global secret spans
+tenants (see [docs/ARCHITECTURE.md](./ARCHITECTURE.md#multi-tenancy-model)). Run `pnpm wiring:check` to
+verify what's actually configured before a demo or deploy.
+
+See also: [DEMO.md](../DEMO.md), [EBPF-OBI.md](./EBPF-OBI.md), [SIGNOZ-MCP.md](./SIGNOZ-MCP.md), [../HACKATHON.md](../HACKATHON.md), [ARCHITECTURE.md](./ARCHITECTURE.md)

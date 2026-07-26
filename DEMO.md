@@ -44,6 +44,8 @@ Select case → show:
 - **Pinpoint** — exact file:line from error logs + GitHub deploy correlation
 - **Suggest fix** — optional LLM patch preview (user copies manually)
 - **Export postmortem ↓** — download shareable `.md` for Slack/Notion
+- **Create SigNoz dashboard** — one click in the Export menu builds a request-rate/error-rate/p99-latency
+  dashboard in SigNoz scoped to the case's service and opens it in a new tab
 - **Engineer Notes** — add a live note
 
 ### 4. Live telemetry (60s)
@@ -58,7 +60,10 @@ Show 5s auto-refresh. Open **Service Map** — real dependency graph from SigNoz
 
 > "PostgreSQL is our investigation database. SigNoz is telemetry. Evolvex is the layer that connects them — so engineers investigate in minutes, not hours."
 
-Show **Settings → Integration Health** dashboard (10 integrations, live probes).
+Show **Settings → Integration Health** dashboard (10 integrations, live probes). Point out that
+every integration there is connected from the browser — paste a key, or "Add to Slack" OAuth — no
+`.env` editing or redeploy per customer, and each workspace's webhook secrets are isolated
+(multi-tenant by design, not bolted on).
 
 ## What we never fake
 
