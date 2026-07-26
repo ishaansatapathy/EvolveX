@@ -38,7 +38,7 @@ short on time. For the live walkthrough script, see [DEMO.md](./DEMO.md).
 
 ```bash
 # 1. Stand up SigNoz + MCP with one file, one command
-foundryctl cast -f casting.yaml
+pnpm signoz:local:up   # alias: foundryctl cast -f casting.yaml
 
 # 2. Point Evolvex at it (.env)
 SIGNOZ_CLOUD_URL=http://localhost:8080
@@ -59,12 +59,14 @@ Hackathon rules do **not** require (or allow) sharing one operator's SigNoz API 
 **their own** SigNoz instance and connects it from the browser — the same production multi-tenant flow any
 SaaS user gets:
 
-1. **Stand up your SigNoz** — `foundryctl cast -f casting.yaml` (self-host) *or* your own SigNoz Cloud workspace.
+1. **Stand up your SigNoz** — `pnpm signoz:local:up` (self-host) *or* your own SigNoz Cloud workspace.
 2. **Open the hosted Evolvex app** (URL in the submission) → sign in with Google.
 3. **Settings → Connect SigNoz** — paste **your** Cloud URL + API key (SigNoz → Settings → API Keys) → **Save SigNoz**.
 4. **Generate webhook credentials** — copy the webhook URL, username (`evolvex`), and **your** workspace password.
 5. **SigNoz → Alerts → Notification Channels** — add a Webhook channel with Basic Auth using those values.
-6. **Fire an alert** — e.g. `pnpm signoz:p99` against your instance, or trigger an existing rule → an investigation appears in **your** workspace only.
+6. **Fire an alert** — instrument your app with OTel, or `pnpm signoz:p99` / `pnpm signoz:loadgen` against your instance → an investigation appears in **your** workspace only.
+
+Full step-by-step (OTel SDK code, GitHub, Slack, Jira, K8s): **[SETUP.md](./SETUP.md)**.
 
 No operator email env var, no shared secrets, no redeploy. Alert routing uses an indexed per-workspace
 `secret_hash` lookup (see [ADR-005](./docs/adr/0005-org-integration-vault.md)).
@@ -143,6 +145,7 @@ step further with real OAuth:
 | PagerDuty / Jira | Routing key / API token paste, with an in-browser **Test** button — PagerDuty fires a real trigger+auto-resolve event, Jira/GitHub/SigNoz hit a real read-only API call |
 | Kubernetes | Settings generates a scoped webhook secret + Helm command; panel flips to a **live "✅ Cluster connected"** status the moment your cluster's collector reports in — polled automatically, no manual refresh |
 | eBPF / Feature flags / CI-CD | Settings → **Connect signal webhooks** generates a scoped secret + ready-to-paste URL/curl example per source; live "✅ Connected" status once an event lands |
+| Plugins | Settings → **Plugins** → Install (Custom Events, Datadog Import, Prometheus Alertmanager, Security Scanner) — per-workspace webhook secret |
 | Foundry self-host | `pnpm signoz:local:up` / `:down` / `:logs` / `:status` — one command each, no `foundryctl` flags to remember |
 
 None of this asks a user to touch `.env` or redeploy to connect a workspace integration — only the app
@@ -169,6 +172,7 @@ in the running app, and walked through in [DEMO.md](./DEMO.md).
 
 | Doc | Purpose |
 |---|---|
+| [SETUP.md](./SETUP.md) | **Full judge setup** — OTel SDK, SigNoz, Evolvex, GitHub, Slack, Jira, K8s |
 | [DEMO.md](./DEMO.md) | 5-minute judge script |
 | [docs/SIGNOZ-MCP.md](./docs/SIGNOZ-MCP.md) | MCP setup (Cloud / Foundry / binary) + tool reference |
 | [docs/WIRING.md](./docs/WIRING.md) | Env var checklist to get to 80%+ integration health |

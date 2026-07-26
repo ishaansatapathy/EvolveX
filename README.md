@@ -13,6 +13,8 @@ SigNoz / GitHub / K8s / eBPF  →  Evolvex API  →  PostgreSQL  →  React UI
 
 See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full production design and zero-fake-data policy.
 
+**Judges:** start with [SETUP.md](./SETUP.md) for the full hosted onboarding flow (OTel → SigNoz → Evolvex → integrations).
+
 For **OpenTelemetry eBPF Instrumentation (OBI)** setup, see [docs/EBPF-OBI.md](./docs/EBPF-OBI.md).
 
 ## Prerequisites
@@ -59,7 +61,8 @@ SigNoz Cloud), and for `pnpm signoz:alert-setup` / `pnpm signoz:postmortem-pack`
 ```bash
 pnpm install
 cp .env.example .env
-# Fill: DATABASE_URL (+ DATABASE_URL_UNPOOLED for Neon), JWT_SECRET, SIGNOZ_*, INVESTIGATION_OWNER_EMAIL
+# Fill: DATABASE_URL (+ DATABASE_URL_UNPOOLED for Neon), JWT_SECRET, INTEGRATION_SECRETS_KEY,
+# SIGNOZ_* (ingestion + API), OPENAI_API_KEY. See docs/WIRING.md (operator) or SETUP.md (judges).
 
 pnpm db:migrate    # applies schema to Neon or local Postgres
 pnpm db:check      # verify connection
@@ -184,8 +187,9 @@ and Kubernetes entirely from the browser — paste-a-key for most, real OAuth fo
 
 ## Deploy (Railway + Vercel + Neon)
 
-- **API:** Railway (`railway.toml`) — set `DATABASE_URL` + `DATABASE_URL_UNPOOLED` from Neon
+- **API:** Railway (`railway.toml`) — set `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `INTEGRATION_SECRETS_KEY`, `JWT_*`, `OPENAI_API_KEY`, `BASE_URL`, `SIGNOZ_WEBHOOK_PUBLIC_URL`, Google OAuth from Neon + SigNoz + Google Cloud
 - **Web:** Vercel (`apps/web/vercel.json`)
 - **DB:** Neon Postgres (no Railway Postgres plugin needed)
 
-See [DEMO.md](./DEMO.md) for the judge walkthrough. Local wiring: [docs/WIRING.md](./docs/WIRING.md).
+See [SETUP.md](./SETUP.md) for full judge onboarding, [DEMO.md](./DEMO.md) for the live walkthrough,
+and [docs/WIRING.md](./docs/WIRING.md) for operator/local env wiring.

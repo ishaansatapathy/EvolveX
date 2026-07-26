@@ -11,7 +11,7 @@ helm upgrade --install evolvex-agent oci://ghcr.io/ishaansatapathy/evolvex-agent
   --version 0.1.0 \
   --namespace evolvex \
   --create-namespace \
-  --set evolvex.baseUrl=https://api.ishaandev.co.in \
+  --set evolvex.baseUrl=https://evolvex-api.ishaandev.co.in \
   --set evolvex.webhookSecret=<from-settings> \
   --set evolvex.organizationId=<from-settings> \
   --set cluster.name=production

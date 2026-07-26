@@ -1,35 +1,57 @@
 # Evolvex — 5-minute judge demo
 
-> Wiring checklist: [docs/WIRING.md](./docs/WIRING.md)
+> **Full setup (OTel → SigNoz → Evolvex → GitHub/Slack/Jira/K8s):** [SETUP.md](./SETUP.md)  
+> **Operator env checklist (Railway/local):** [docs/WIRING.md](./docs/WIRING.md)  
+> **Capability map:** [HACKATHON.md](./HACKATHON.md)
 
 ## Before the demo
 
-- [ ] **SigNoz (Foundry):** `foundryctl cast -f casting.yaml` — uses repo-root `casting.yaml` + `casting.yaml.lock`
-- [ ] `.env` production values set on Railway (API) and Vercel (web) — or local `.env` wired per WIRING.md
-- [ ] SigNoz alert configured → webhook URL live (`SIGNOZ_WEBHOOK_SECRET` set)
-- [ ] GitHub webhook on repo → `/webhooks/github` (`GITHUB_WEBHOOK_SECRET` set)
-- [ ] `GITHUB_TOKEN` set for pinpoint + deploy diff
-- [ ] `OPENAI_API_KEY` set for AI summary
-- [ ] `SIGNOZ_INGESTION_KEY` set so API self-instruments as `evolvex-api`
-- [ ] `/settings` → Integration Health **≥70%**
+### Hosted Evolvex — judge / evaluator checklist
+
+Use this when testing **production** (e.g. `https://evolvex.ishaandev.co.in`) with **your own** credentials — no shared operator secrets.
+
+- [ ] **Your SigNoz** running (Cloud or Foundry `casting.yaml`)
+- [ ] **Your app** instrumented with OTel → your SigNoz (**ingestion key** in app, not in Evolvex Settings)
+- [ ] Evolvex → sign in → **Settings → SigNoz** → Cloud URL + **API key** → Save → Test OK
+- [ ] **Generate webhook credentials** → SigNoz Notification Channel (URL + `evolvex` + **your password**)
+- [ ] SigNoz **alert rule** attached to your channel (e.g. `signoz_calls_total` or p99 for your `service.name`)
+- [ ] Optional: **GitHub** PAT + `owner/repo`, **Slack** webhook, **Jira** token in Settings
+- [ ] Fire alert (`pnpm signoz:p99` with your ingestion key, or error in your app) → case in **Investigations**
+
+### Operator checklist (deploying / running locally)
+
+- [ ] Railway: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `JWT_*`, `INTEGRATION_SECRETS_KEY`, `OPENAI_API_KEY`, `BASE_URL`, `SIGNOZ_WEBHOOK_PUBLIC_URL`, Google OAuth
+- [ ] Optional operator once: `SLACK_CLIENT_ID`/`SECRET` for Add to Slack OAuth
+- [ ] Local: `pnpm db:migrate`, `pnpm dev`, `.env` per [docs/WIRING.md](./docs/WIRING.md)
+- [ ] `SIGNOZ_INGESTION_KEY` on API for **Evolvex self-instrumentation** (`evolvex-api` traces in SigNoz)
+- [ ] `/settings` → Integration Health **≥70%** (operator smoke test)
+
+> **Do not** rely on `INVESTIGATION_OWNER_EMAIL` or global `SIGNOZ_WEBHOOK_SECRET` for multi-tenant demos — judges use **Settings → Generate webhook credentials** per workspace. Those env vars are legacy single-tenant/dev fallback only.
 
 ## Script (5 min)
 
 ### 1. Hook (30s)
 
-> "SigNoz tells you something broke. Evolvex tells you **why** — by correlating alerts, traces, deploys, and kernel signals into one investigation."
+> "SigNoz tells you something broke. Evolvex tells you **why** — by correlating alerts, traces, logs, deploys, and kernel signals into one investigation."
 
 Open live URL → **Sign in with Google** or email/password.
 
 ### 2. Trigger incident (60s)
 
-Option A — Live:
-```bash
-pnpm signoz:p99
-```
-Wait for SigNoz alert → Evolvex creates investigation automatically.
+Option A — **Your app** (best for judges):
 
-Option B — Show existing open case in **Investigations**.
+> OTel in your project sends telemetry to **your** SigNoz → alert fires → webhook → case in **your** workspace.
+
+Option B — **Load generator** (repo clone, your ingestion key):
+
+```bash
+pnpm signoz:p99          # one-shot tail latency
+pnpm signoz:loadgen      # baseline + periodic error spikes (graph peaks)
+```
+
+Wait 1–2 min for SigNoz alert → Evolvex creates investigation automatically.
+
+Option C — Show an **existing open case** in **Investigations**.
 
 ### 3. Investigation OS (90s)
 
@@ -46,6 +68,7 @@ Select case → show:
 - **Export postmortem ↓** — download shareable `.md` for Slack/Notion
 - **Create SigNoz dashboard** — one click in the Export menu builds a request-rate/error-rate/p99-latency
   dashboard in SigNoz scoped to the case's service and opens it in a new tab
+- **Create Jira issue** — from case (if Jira connected in Settings)
 - **Engineer Notes** — add a live note
 
 ### 4. Live telemetry (60s)
@@ -60,10 +83,9 @@ Show 5s auto-refresh. Open **Service Map** — real dependency graph from SigNoz
 
 > "PostgreSQL is our investigation database. SigNoz is telemetry. Evolvex is the layer that connects them — so engineers investigate in minutes, not hours."
 
-Show **Settings → Integration Health** dashboard (10 integrations, live probes). Point out that
-every integration there is connected from the browser — paste a key, or "Add to Slack" OAuth — no
-`.env` editing or redeploy per customer, and each workspace's webhook secrets are isolated
-(multi-tenant by design, not bolted on).
+Show **Settings → Integration Health** dashboard. Point out that every integration is connected from the
+browser — paste a key, or "Add to Slack" OAuth — no `.env` editing or redeploy per user, and each
+workspace's webhook secrets are isolated (multi-tenant by design).
 
 ## What we never fake
 
@@ -71,15 +93,19 @@ every integration there is connected from the browser — paste a key, or "Add t
 - No mock logs/traces/service map in the UI
 - No LLM summary without OpenAI + real timeline evidence
 - No incident narrative without real timeline entries
-- Demo traces fallback removed from investigation pipeline
+- Demo traces fallback removed from investigation pipeline in production
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| No investigations | Settings → Connect SigNoz → Generate webhook credentials, then paste URL + Basic auth into SigNoz Notification Channels — see [WIRING.md](./docs/WIRING.md) |
-| Integration health partial | Settings → copy webhook URLs, set missing secrets |
-| Empty traces page | Run `pnpm signoz:loadgen` or use the app (OTel on API) |
-| No AI summary | Set `OPENAI_API_KEY`, click Generate summary |
-| GitHub deploy missing | Verify `GITHUB_WEBHOOK_SECRET` + HMAC on GitHub |
-| Pinpoint empty | Set `GITHUB_TOKEN` with `repo` read scope |
+| No investigations | Settings → SigNoz → **Generate webhook credentials** → SigNoz channel + alert rule — see [SETUP.md](./SETUP.md) |
+| Case in wrong workspace | Wrong webhook **password** in SigNoz channel — use **your** generated password |
+| Save SigNoz 500 | Operator: run migrations + set `INTEGRATION_SECRETS_KEY` on deployment |
+| Test Notification: no alerts | No telemetry for rule's `service.name` — run app OTel or `pnpm signoz:p99` |
+| Integration health partial | Connect missing integrations in Settings (not global env for judges) |
+| Empty traces page | Run `pnpm signoz:loadgen` or instrument your app with OTel |
+| No AI summary | Operator: `OPENAI_API_KEY` on deployment; click Generate summary on case |
+| GitHub deploy missing | Connect GitHub in Settings + push to configured repo **after** case exists |
+| Pinpoint empty | GitHub PAT with `repo` read + error logs in SigNoz for same service |
+| Slack test fails | Re-paste incoming webhook URL or reconnect OAuth |

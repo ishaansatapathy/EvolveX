@@ -204,6 +204,7 @@ probes against `/health`, `/health/deep`, `/openapi.json`, webhook routes), and 
 
 ## Related Docs
 
+- [SETUP.md](../SETUP.md) — full judge onboarding (hosted Evolvex + your own SigNoz)
 - [DEMO.md](../DEMO.md) — 5-minute judge walkthrough
 - [HACKATHON.md](../HACKATHON.md) — full SigNoz capability → Evolvex usage map
 - [docs/WIRING.md](./WIRING.md) — env var checklist to reach 80%+ integration health
