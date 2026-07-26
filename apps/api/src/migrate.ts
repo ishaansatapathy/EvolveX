@@ -148,10 +148,21 @@ CREATE TABLE IF NOT EXISTS "organization_integrations" (
 );
 
 ALTER TABLE "organization_integrations" DROP CONSTRAINT IF EXISTS "organization_integrations_provider_check";
-ALTER TABLE "organization_integrations" ADD CONSTRAINT "organization_integrations_provider_check" CHECK ("provider" in ('signoz', 'github', 'slack', 'pagerduty', 'jira', 'kubernetes'));
+ALTER TABLE "organization_integrations" ADD CONSTRAINT "organization_integrations_provider_check" CHECK ("provider" in ('signoz', 'github', 'slack', 'pagerduty', 'jira', 'kubernetes', 'ebpf', 'feature_flag', 'cicd'));
 
 CREATE UNIQUE INDEX IF NOT EXISTS "organization_integrations_org_provider_idx" ON "organization_integrations" ("organization_id", "provider");
 CREATE INDEX IF NOT EXISTS "organization_integrations_org_idx" ON "organization_integrations" ("organization_id");
+
+-- Multi-tenant webhook secret hash columns (drizzle 0043) — required for per-workspace SigNoz alert routing.
+ALTER TABLE "organization_integrations" ADD COLUMN IF NOT EXISTS "secret_hash" varchar(64);
+ALTER TABLE "organization_integrations" ADD COLUMN IF NOT EXISTS "previous_secret_hash" varchar(64);
+ALTER TABLE "organization_integrations" ADD COLUMN IF NOT EXISTS "previous_secret_expires_at" timestamp;
+
+CREATE INDEX IF NOT EXISTS "organization_integrations_secret_hash_idx"
+  ON "organization_integrations" ("provider", "secret_hash");
+
+CREATE INDEX IF NOT EXISTS "organization_integrations_previous_secret_hash_idx"
+  ON "organization_integrations" ("provider", "previous_secret_hash");
 
 CREATE TABLE IF NOT EXISTS "telemetry_sampling_policies" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

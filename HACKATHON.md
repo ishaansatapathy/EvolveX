@@ -53,6 +53,26 @@ pnpm install && pnpm dev
 not "trust us, it works." MCP is turned on by default (`spec.mcp.spec.enabled: true`) so the same judge can
 immediately query the instance conversationally without any extra setup.
 
+### 2.1 Judge path: hosted Evolvex + **your own** SigNoz (no shared credentials)
+
+Hackathon rules do **not** require (or allow) sharing one operator's SigNoz API key. Each judge brings
+**their own** SigNoz instance and connects it from the browser — the same production multi-tenant flow any
+SaaS user gets:
+
+1. **Stand up your SigNoz** — `foundryctl cast -f casting.yaml` (self-host) *or* your own SigNoz Cloud workspace.
+2. **Open the hosted Evolvex app** (URL in the submission) → sign in with Google.
+3. **Settings → Connect SigNoz** — paste **your** Cloud URL + API key (SigNoz → Settings → API Keys) → **Save SigNoz**.
+4. **Generate webhook credentials** — copy the webhook URL, username (`evolvex`), and **your** workspace password.
+5. **SigNoz → Alerts → Notification Channels** — add a Webhook channel with Basic Auth using those values.
+6. **Fire an alert** — e.g. `pnpm signoz:p99` against your instance, or trigger an existing rule → an investigation appears in **your** workspace only.
+
+No operator email env var, no shared secrets, no redeploy. Alert routing uses an indexed per-workspace
+`secret_hash` lookup (see [ADR-005](./docs/adr/0005-org-integration-vault.md)).
+
+**Operator requirements (once, on the deployment):** `DATABASE_URL`, `JWT_*`, `INTEGRATION_SECRETS_KEY`
+(encrypts workspace vault), `OPENAI_API_KEY`, `SIGNOZ_WEBHOOK_PUBLIC_URL` (public API URL for webhooks).
+Judges never see or need those — only their own SigNoz keys in Settings.
+
 ## 3. The MCP loop: querying Evolvex's own telemetry conversationally
 
 Connect `.cursor/mcp.json` (copy `.cursor/mcp.json.example`, see [docs/SIGNOZ-MCP.md](./docs/SIGNOZ-MCP.md)),
@@ -117,7 +137,7 @@ step further with real OAuth:
 
 | Integration | Self-service mechanism |
 |---|---|
-| SigNoz | Cloud URL + API key + ingestion key, pasted in Settings |
+| SigNoz | Cloud URL + API key pasted in Settings; **Generate webhook credentials** for per-workspace alert routing (Basic Auth password unique to your workspace) |
 | Slack | **"Add to Slack" OAuth** (`SLACK_CLIENT_ID`/`SECRET`) — one click, no webhook URL to find; falls back to manual paste. "Send test message" posts a real message to verify |
 | GitHub | PAT paste + automatic deploy-webhook registration via GitHub's API |
 | PagerDuty / Jira | Routing key / API token paste, with an in-browser **Test** button — PagerDuty fires a real trigger+auto-resolve event, Jira/GitHub/SigNoz hit a real read-only API call |
@@ -129,14 +149,14 @@ None of this asks a user to touch `.env` or redeploy to connect a workspace inte
 *operator* configures OAuth app credentials once (e.g. `SLACK_CLIENT_ID`), same as any SaaS ("Sign in with
 Google" needs a Google Cloud project once; every end user still just clicks a button).
 
-**Multi-tenant isolation, not just self-service:** the four shared-secret webhooks (Kubernetes, eBPF,
+**Multi-tenant isolation, not just self-service:** shared-secret webhooks (SigNoz alerts, Kubernetes, eBPF,
 feature flags, CI/CD) each generate a *per-workspace* secret rather than reusing one global env var —
 compromising one tenant's secret can't touch another tenant's data. Lookup is an indexed `secret_hash`
 column (SHA-256, O(1) `WHERE` match), not a decrypt-every-row scan, so it holds up past a handful of
 tenants. Rotating a secret in Settings keeps the old one valid for 24h (`previous_secret_hash` +
 expiry) so an in-flight agent/CI runner never gets a hard outage mid-rotation. The single global env
-var (`KUBERNETES_WEBHOOK_SECRET`, etc.) still works as a single-tenant/dev fallback, but a connected
-workspace never touches that path.
+var (`SIGNOZ_WEBHOOK_SECRET`, `KUBERNETES_WEBHOOK_SECRET`, etc.) still works as a single-tenant/dev
+fallback, but a connected workspace never touches that path.
 
 ## 7. Everything else already shipped (the product itself)
 
