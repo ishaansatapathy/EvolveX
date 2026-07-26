@@ -101,6 +101,7 @@ export default function InvestigationsPageContent() {
   const [timelineKindFilter, setTimelineKindFilter] = useState<string>("ALL");
   const [timelineSearch, setTimelineSearch] = useState("");
   const [timelineGroupedView, setTimelineGroupedView] = useState(true);
+  const [timelineHighlightEntryId, setTimelineHighlightEntryId] = useState<string | null>(null);
   const [fixPreview, setFixPreview] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [exportingPostmortem, setExportingPostmortem] = useState(false);
@@ -288,26 +289,74 @@ export default function InvestigationsPageContent() {
       ? "Collecting evidence from SigNoz…"
       : "No context generated yet.");
 
-  function scrollWithinDetail(element: HTMLElement | null, offset = 88) {
+  const scrollWithinDetail = useCallback((element: HTMLElement | null, offset = 88) => {
     const container = detailScrollRef.current;
     if (!container || !element) return;
 
     const containerTop = container.getBoundingClientRect().top;
     const elementTop = element.getBoundingClientRect().top;
     container.scrollBy({ top: elementTop - containerTop - offset, behavior: "smooth" });
-  }
-
-  function scrollToSection(sectionId: string) {
-    if (sectionId === "case-timeline") return;
-    scrollWithinDetail(document.getElementById(sectionId));
-  }
-
-  const highlightTimelineEntry = useCallback((entryId: string) => {
-    const entry = detailScrollRef.current?.querySelector(`[data-timeline-entry-id="${entryId}"]`);
-    if (!(entry instanceof HTMLElement)) return;
-    entry.classList.add("is-citation-highlight");
-    window.setTimeout(() => entry.classList.remove("is-citation-highlight"), 2200);
   }, []);
+
+  const scrollToSection = useCallback(
+    (sectionId: string) => {
+      scrollWithinDetail(document.getElementById(sectionId));
+    },
+    [scrollWithinDetail],
+  );
+
+  const highlightTimelineEntry = useCallback(
+    (entryId: string) => {
+      const entryInTimeline = timeline.find((entry) => entry.id === entryId);
+      if (entryInTimeline) {
+        if (timelineKindFilter !== "ALL" && entryInTimeline.kind !== timelineKindFilter) {
+          setTimelineKindFilter("ALL");
+        }
+        if (timelineSearch.trim()) {
+          setTimelineSearch("");
+        }
+      }
+
+      scrollWithinDetail(document.getElementById("case-timeline"), 72);
+      setTimelineHighlightEntryId(entryId);
+    },
+    [timeline, timelineKindFilter, timelineSearch, scrollWithinDetail],
+  );
+
+  useEffect(() => {
+    if (!timelineHighlightEntryId) return;
+
+    const entryId = timelineHighlightEntryId;
+    let highlightTimer: number | undefined;
+    let cancelled = false;
+
+    const revealEntry = () => {
+      if (cancelled) return;
+
+      const timelineRoot = document.getElementById("case-timeline");
+      const entry = timelineRoot?.querySelector(`[data-timeline-entry-id="${entryId}"]`);
+
+      if (entry instanceof HTMLElement) {
+        scrollWithinDetail(entry, 120);
+        entry.classList.add("is-citation-highlight");
+        highlightTimer = window.setTimeout(() => {
+          entry.classList.remove("is-citation-highlight");
+          setTimelineHighlightEntryId(null);
+        }, 2200);
+        return;
+      }
+
+      setTimelineHighlightEntryId(null);
+    };
+
+    const layoutTimer = window.setTimeout(revealEntry, timelineGroupedView ? 80 : 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(layoutTimer);
+      if (highlightTimer) window.clearTimeout(highlightTimer);
+    };
+  }, [timelineHighlightEntryId, timelineGroupedView, filteredTimeline, scrollWithinDetail]);
 
   async function fetchPostmortemExport() {
     if (!activeId) return null;
@@ -1133,6 +1182,7 @@ export default function InvestigationsPageContent() {
                         entries={filteredTimeline}
                         formatEventTime={formatEventTime}
                         citationRefByEntryId={timelineCitationRefById}
+                        highlightEntryId={timelineHighlightEntryId}
                       />
                     ) : (
                     <ol className="evx-dash__narrative-beats">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   groupTimelineEntries,
@@ -12,6 +12,7 @@ type GroupedTimelineProps = {
   entries: TimelineGroupEntry[];
   formatEventTime: (iso: string) => string;
   citationRefByEntryId?: Map<string, string>;
+  highlightEntryId?: string | null;
 };
 
 function TimelineBeat({
@@ -51,14 +52,25 @@ function TimelineGroupBlock({
   defaultOpen,
   formatEventTime,
   citationRefByEntryId,
+  highlightEntryId,
 }: {
   group: TimelineGroup;
   defaultOpen: boolean;
   formatEventTime: (iso: string) => string;
   citationRefByEntryId?: Map<string, string>;
+  highlightEntryId?: string | null;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const containsHighlight = Boolean(
+    highlightEntryId && group.entries.some((entry) => entry.id === highlightEntryId),
+  );
+  const [open, setOpen] = useState(defaultOpen || containsHighlight);
   const collapsible = group.entryCount > 1;
+
+  useEffect(() => {
+    if (containsHighlight) {
+      setOpen(true);
+    }
+  }, [containsHighlight, highlightEntryId]);
 
   if (!collapsible) {
     const entry = group.entries[0];
@@ -112,6 +124,7 @@ export function GroupedTimeline({
   entries,
   formatEventTime,
   citationRefByEntryId,
+  highlightEntryId,
 }: GroupedTimelineProps) {
   const groups = useMemo(() => groupTimelineEntries(entries), [entries]);
 
@@ -124,6 +137,7 @@ export function GroupedTimeline({
           defaultOpen={group.highlighted || group.entryCount <= 2}
           formatEventTime={formatEventTime}
           citationRefByEntryId={citationRefByEntryId}
+          highlightEntryId={highlightEntryId}
         />
       ))}
     </ol>
