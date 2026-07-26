@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../packages/typescript-config/node.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      "@repo/database": ["../packages/database/index.ts"],
+      "@repo/database/*": ["../packages/database/*"],
+      "@repo/services/*": ["../packages/services/*"]
+    }
+  },
+  "include": ["."]
+}
