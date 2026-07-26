@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { trpc } from "~/trpc/client";
 
 type RuntimeInsightsView = {
@@ -85,18 +87,26 @@ function stateLabel(state: TelemetryIntelligenceView["intelligenceState"]) {
 }
 
 export function TelemetryIntelligencePanel({ data, investigationId }: TelemetryIntelligencePanelProps) {
+  const [showCollectorConfig, setShowCollectorConfig] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
   const enrichment = data.alertEnrichment;
   const liveInsightsQuery = trpc.telemetryIntelligence.insightsForInvestigation.useQuery(
     { investigationId: investigationId ?? "", windowMinutes: 15 },
     { enabled: Boolean(investigationId), staleTime: 60_000 },
   );
+  const collectorConfigQuery = trpc.telemetryIntelligence.collectorConfig.useQuery(undefined, {
+    enabled: showCollectorConfig,
+    staleTime: 60_000,
+  });
   const runtimeInsights =
     liveInsightsQuery.data ?? data.runtimeInsights ?? data.clickhouseInsights ?? null;
-  const collectorUrl =
-    data.collectorConfigHint ??
-    (typeof window !== "undefined"
-      ? `${window.location.protocol}//${window.location.hostname}:8000/telemetry-intelligence/collector-config`
-      : "/telemetry-intelligence/collector-config");
+  const agentPullUrl = data.collectorConfigHint ?? null;
+
+  async function copy(label: string, value: string) {
+    await navigator.clipboard.writeText(value);
+    setCopied(label);
+    setTimeout(() => setCopied(null), 1500);
+  }
 
   return (
     <section className="evx-dash__context-card evx-dash__ti-card">
@@ -189,10 +199,67 @@ export function TelemetryIntelligencePanel({ data, investigationId }: TelemetryI
       ) : null}
 
       <div className="evx-dash__ti-foot">
-        <a href={collectorUrl} target="_blank" rel="noreferrer" className="evx-dash__btn-ghost">
-          OTel collector config (#2)
-        </a>
+        <button
+          type="button"
+          className="evx-dash__btn-ghost"
+          onClick={() => setShowCollectorConfig((open) => !open)}
+        >
+          {showCollectorConfig ? "Hide OTel collector config (#2)" : "View OTel collector config (#2)"}
+        </button>
       </div>
+
+      {showCollectorConfig ? (
+        <div className="evx-dash__settings-card evx-dash__ti-collector" style={{ marginTop: "0.75rem" }}>
+          {collectorConfigQuery.isLoading ? (
+            <p className="evx-dash__stat-note">Loading collector YAML…</p>
+          ) : collectorConfigQuery.error ? (
+            <p className="evx-dash__integration-message evx-dash__integration-message--error">
+              {collectorConfigQuery.error.message}
+            </p>
+          ) : collectorConfigQuery.data ? (
+            <>
+              <p className="evx-dash__stat-note">
+                {collectorConfigQuery.data.activePolicyCount} active sampling{" "}
+                {collectorConfigQuery.data.activePolicyCount === 1 ? "policy" : "policies"} · OTLP{" "}
+                {collectorConfigQuery.data.signozOtlpEndpoint}
+              </p>
+              <pre className="evx-dash__code-block">{collectorConfigQuery.data.yaml}</pre>
+              <div className="evx-dash__cause-actions">
+                <button
+                  type="button"
+                  className="evx-dash__btn-ghost"
+                  onClick={() => void copy("yaml", collectorConfigQuery.data.yaml)}
+                >
+                  {copied === "yaml" ? "Copied!" : "Copy YAML"}
+                </button>
+                {agentPullUrl ? (
+                  <button
+                    type="button"
+                    className="evx-dash__btn-ghost"
+                    onClick={() => void copy("agent-url", agentPullUrl)}
+                  >
+                    {copied === "agent-url" ? "Copied!" : "Copy agent pull URL"}
+                  </button>
+                ) : null}
+              </div>
+              {agentPullUrl ? (
+                <>
+                  <dl className="evx-dash__pipeline-cache-meta" style={{ marginTop: "0.5rem" }}>
+                    <div>
+                      <dt>Agent pull URL</dt>
+                      <dd>{agentPullUrl}</dd>
+                    </div>
+                  </dl>
+                  <p className="evx-dash__stat-note">
+                    For OTel collectors in your cluster — authenticate with{" "}
+                    <code>Authorization: Bearer EVOLVEX_COLLECTOR_KEY</code>.
+                  </p>
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
