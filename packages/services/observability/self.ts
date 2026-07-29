@@ -97,7 +97,7 @@ export async function buildSelfObservabilitySnapshot(input?: {
       enabled: process.env.VITEST !== "true",
       backend: isRedisConfigured() ? "redis" : "in-process",
       notes: [
-        "Auth, password reset, agent chat, and tRPC routes are rate limited.",
+        "Auth, password reset, and tRPC routes are rate limited.",
         isRedisConfigured()
           ? "Redis-backed counters shared across API instances."
           : "In-process limits per API instance (set REDIS_URL for multi-instance deploys).",
